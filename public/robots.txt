@@ -1,0 +1,7 @@
+User-agent: *
+Disallow: /api/
+Disallow: /admin
+Disallow: /*?
+
+Sitemap: https://save-tube.ru/sitemap.xml
+Host: https://save-tube.ru

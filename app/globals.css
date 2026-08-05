@@ -1,0 +1,42 @@
+@import "tailwindcss";
+
+@theme inline {
+  --font-sans: var(--font-montserrat), ui-sans-serif, system-ui, sans-serif;
+}
+
+body {
+  background: var(--color-zinc-50);
+  color: var(--color-zinc-900);
+}
+
+/* Текстовые страницы (политика, соглашение) */
+.prose-savetube {
+  max-width: 48rem;
+  color: var(--color-zinc-600);
+  font-size: 0.9375rem;
+  line-height: 1.7;
+}
+.prose-savetube h1 {
+  color: var(--color-zinc-900);
+  font-size: 1.875rem;
+  font-weight: 700;
+  margin-bottom: 1.5rem;
+}
+.prose-savetube h2 {
+  color: var(--color-zinc-900);
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin-top: 2rem;
+  margin-bottom: 0.75rem;
+}
+.prose-savetube p {
+  margin-bottom: 0.75rem;
+}
+.prose-savetube ul {
+  list-style: disc;
+  padding-left: 1.5rem;
+  margin-bottom: 0.75rem;
+}
+.prose-savetube li {
+  margin-bottom: 0.25rem;
+}
