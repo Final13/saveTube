@@ -42,10 +42,18 @@ Next.js 16 + React 19, App Router, Tailwind v4, lucide-react, алиас `@/`. �
 ## Защита от злоупотреблений (зафиксировано)
 
 - Модель синхронная (без task_id/очереди/worker_threads) — воркеры и Redis из старого бэкенда не нужны: нечего ставить в очередь, кеш заменён in-memory TTL (`lib/cache.ts`, на серверless заменить на Redis с тем же интерфейсом).
-- `lib/rate-limit.ts` — скользящее окно по IP + счётчик concurrency. Лимиты: `get-video-info` 10/мин, `get-segments` 20/мин, прокси 8 одновременных стримов на IP (слот освобождается в `finally` стрима).
+- `lib/rate-limit.ts` — скользящее окно по IP + счётчик concurrency. Лимиты: `get-video-info` 10/мин, `get-segments` 20/мин, прокси 16 одновременных стримов на IP (= MAX_THREADS на клиенте; слот освобождается в `finally` стрима).
 - Кеши: `get-video-info` 55 мин, `get-segments` (md5) 30 мин — чтобы не дёргать RuTube на каждый запрос.
 - Прокси закрыт HMAC-токеном (`lib/proxy-token.ts`, `${exp}.${sig}`, TTL 3ч): выдаёт `get-segments`, клиент шлёт `&t=`. Без валидного токена — 403. Плюс whitelist хостов (см. выше).
-- Секреты в репо не коммитить: `.env*`, `data/`, папка `old/` (старый код с кредами — держать локально).
+
+## Масштабирование: внешние прокси-ноды
+
+Когда упрётся полоса основного сервера — сегментный трафик выносится на отдельные VPS:
+
+- `proxy-node/server.js` — самодостаточная нода на голом Node.js (ноль зависимостей): та же проверка HMAC-токена (тот же `PROXY_TOKEN_SECRET`!), whitelist хостов, лимит 16 стримов/IP, CORS (`PROXY_NODE_ORIGIN`), `/health`. Логика зеркалит `app/api/proxy/route.ts` — **менять их синхронно**.
+- Клиент выбирает ноду в `lib/proxy-nodes.ts` из `NEXT_PUBLIC_PROXY_URLS` (базовые URL через запятую): round-robin, на ретрае — следующая нода (failover автоматический). Список пуст — всё работает через встроенный `/api/proxy`, как сейчас.
+- Поднятие ноды: скопировать `proxy-node/` на VPS → `PROXY_TOKEN_SECRET=... PORT=3100 PROXY_NODE_ORIGIN=https://save-tube.ru pm2 start server.js --name proxy-node` → повесить поддомен (nginx/caddy с TLS) → добавить URL в `NEXT_PUBLIC_PROXY_URLS` основного приложения и пересобрать. Без `PROXY_TOKEN_SECRET` нода отвечает всем 403.
+- Секреты в репо не коммитить: `.env*`, `data/`. Старый бэкенд (PHP/воркеры/прокси-ноды, с кредами в коде) лежит вне репо — в загрузках пользователя (`Downloads/Telegram Desktop/Архив (2)`, `Архив (3)`).
 
 ## Реклама РСЯ
 

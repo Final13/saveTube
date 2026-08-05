@@ -7,7 +7,8 @@ import { trackRequest } from "@/lib/metrics";
 // поэтому браузер качает сегменты через этот роут.
 // Защита: только whitelist-хосты RuTube + подписанный токен (выдаёт /api/get-segments)
 // + лимит одновременных соединений с одного IP.
-const MAX_CONCURRENT_PER_IP = 8;
+// Лимит = MAX_THREADS на клиенте (подписка до 16 потоков) — иначе премиум упирался бы в 429
+const MAX_CONCURRENT_PER_IP = 16;
 
 async function handleGet(request: Request) {
   const { searchParams } = new URL(request.url);

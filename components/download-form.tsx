@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { CircleAlert, Download, Loader2, Minus, Plus, X, Zap } from "lucide-react";
 import PremiumModal from "@/components/premium-modal";
+import { buildProxyUrl } from "@/lib/proxy-nodes";
 
 interface VideoMetadata {
   title: string;
@@ -112,10 +113,10 @@ export default function DownloadForm({ premiumBlock = false }: { premiumBlock?: 
 
   const fetchSegment = async (segmentUrl: string): Promise<Blob> => {
     let lastError: Error | null = null;
-    const tokenParam = proxyTokenRef.current ? `&t=${proxyTokenRef.current}` : "";
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       try {
-        const res = await fetch(`/api/proxy?url=${encodeURIComponent(segmentUrl)}${tokenParam}`);
+        // На ретрае — следующая прокси-нода из списка (если внешние ноды заданы)
+        const res = await fetch(buildProxyUrl(segmentUrl, proxyTokenRef.current, attempt - 1));
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return await res.blob();
       } catch (e) {
