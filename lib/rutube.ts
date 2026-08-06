@@ -1,14 +1,63 @@
+import { ProxyAgent, fetch as undiciFetch } from "undici";
+
 // Ядро логики скачивания с RuTube.
 // Все эндпоинты проверены на живом видео (см. AGENTS.md):
 //   метаданные  — https://rutube.ru/api/video/{id}/
 //   плейлисты   — https://rutube.ru/api/play/options/{id}/?pver=v2 -> video_balancer.default (master m3u8)
 //   сегменты    — media m3u8 содержит ОТНОСИТЕЛЬНЫЕ пути *.ts
 // CDN RuTube НЕ отдаёт Access-Control-Allow-Origin, поэтому сегменты качаются через app/api/proxy.
+//
+// API rutube.ru блокирует дата-центровые IP (Vercel/AWS → 404/403-заглушка), а CDN (rtbcdn) — нет.
+// Поэтому для деплоя на serverless API-запросы идут через прокси с чистым IP:
+// RUTUBE_API_PROXY — один или несколько http://user:pass@host:port ЧЕРЕЗ ЗАПЯТУЮ (ротация
+// round-robin + ретрай со следующим — прокси дохнут со временем). Применяется ТОЛЬКО к api-запросам,
+// плейлисты и сегменты (основной трафик) идут напрямую.
 
 const RUTUBE_HEADERS: HeadersInit = {
   "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko)",
   Referer: "https://rutube.ru/",
 };
+
+const apiProxyAgents = (process.env.RUTUBE_API_PROXY ?? "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean)
+  .map((url) => new ProxyAgent(url));
+
+let apiProxyCounter = 0;
+
+interface ApiResponse {
+  ok: boolean;
+  status: number;
+  json: () => Promise<any>;
+}
+
+/** fetch для API rutube.ru: через прокси, если задан RUTUBE_API_PROXY; ретрай со следующим прокси */
+async function rutubeApiFetch(url: string): Promise<ApiResponse> {
+  if (apiProxyAgents.length === 0) {
+    return fetch(url, {
+      headers: RUTUBE_HEADERS,
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+      cache: "no-store",
+    });
+  }
+
+  let lastError: unknown;
+  // До двух попыток: текущий прокси, при сетевой ошибке — следующий в списке
+  for (let attempt = 0; attempt < Math.min(2, apiProxyAgents.length); attempt++) {
+    const agent = apiProxyAgents[(apiProxyCounter++ + attempt) % apiProxyAgents.length];
+    try {
+      return (await undiciFetch(url, {
+        headers: RUTUBE_HEADERS as Record<string, string>,
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+        dispatcher: agent,
+      })) as unknown as ApiResponse;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError;
+}
 
 const FETCH_TIMEOUT_MS = 15_000;
 
@@ -78,11 +127,7 @@ export function getQualityDescription(qualityLabel: string): string {
 }
 
 async function fetchJson(url: string): Promise<any> {
-  const res = await fetch(url, {
-    headers: RUTUBE_HEADERS,
-    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-    cache: "no-store",
-  });
+  const res = await rutubeApiFetch(url);
   if (!res.ok) {
     throw new Error(
       res.status === 404

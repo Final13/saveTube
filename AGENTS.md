@@ -28,7 +28,15 @@ Next.js 16 + React 19, App Router, Tailwind v4, lucide-react, алиас `@/`. �
 
 ## Env
 
-См. `.env.example`: `NEXT_PUBLIC_SITE_URL` (обязателен в проде — metadataBase/sitemap/canonical), `YANDEX_VERIFICATION`, `GOOGLE_VERIFICATION`, `NEXT_PUBLIC_YM_ID`, `TBANK_TERMINAL_KEY`, `TBANK_PASSWORD`, `PROXY_TOKEN_SECRET` (обязателен в проде — без него прокси отдаёт 500), `NEXT_PUBLIC_RSY_ID` (без него РСЯ-баннер не рендерится).
+См. `.env.example`: `NEXT_PUBLIC_SITE_URL` (обязателен в проде — metadataBase/sitemap/canonical), `YANDEX_VERIFICATION`, `GOOGLE_VERIFICATION`, `NEXT_PUBLIC_YM_ID`, `TBANK_TERMINAL_KEY`, `TBANK_PASSWORD`, `PROXY_TOKEN_SECRET` (обязателен в проде — без него прокси отдаёт 500), `NEXT_PUBLIC_RSY_ID` (без него РСЯ-баннер не рендерится), `RUTUBE_API_PROXY` (только для serverless — см. ниже).
+
+## Деплой на serverless (Vercel) — важно
+
+**API rutube.ru банит дата-центровые IP** (Vercel/AWS → 404/403-заглушка), а CDN `*.rtbcdn.ru` — нет (проверено: сегменты и m3u8 с Vercel качаются). Поэтому на Vercel работает всё, кроме 2 текстовых API-запросов на видео — они идут через прокси с чистым IP:
+
+- `lib/rutube.ts`: `rutubeApiFetch()` — если задан `RUTUBE_API_PROXY=http://user:pass@host:port`, API-запросы идут через undici `ProxyAgent`. Плейлисты и сегменты — всегда напрямую (иначе весь видео-трафик пошёл бы через платный прокси).
+- Прокси нужен любой HTTP-с прокси с не-DC IP (подойдёт самый дешёвый RU-прокси: трафик ~5 КБ на конвертацию).
+- Остальные serverless-ограничения в силе: SQLite не пишется (платежи/метрики на Vercel не живут), in-memory лимиты — per-instance. Vercel = витрина со скачиванием, прод = VPS.
 
 ## Платежи T-Bank (не ломать без причины)
 
