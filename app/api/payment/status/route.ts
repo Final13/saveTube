@@ -17,8 +17,8 @@ async function handleGet(request: Request) {
 
   const active =
     paymentIdParam !== null
-      ? isPaymentActive(Number(paymentIdParam), email)
-      : hasActiveSubscription(email);
+      ? await isPaymentActive(Number(paymentIdParam), email)
+      : await hasActiveSubscription(email);
 
   return Response.json(
     { status: active },

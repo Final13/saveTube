@@ -30,11 +30,11 @@ export async function GET(request: Request) {
 
   return Response.json({
     window: windowKey,
-    summary: getSummary(since),
-    timeseries: getTimeseries(since, w.bucketMs),
-    topIps: getTopIps(since, 10),
-    suspiciousIps: getSuspiciousIps(since, 10),
-    routes: getRouteStats(since),
+    summary: await getSummary(since),
+    timeseries: await getTimeseries(since, w.bucketMs),
+    topIps: await getTopIps(since, 10),
+    suspiciousIps: await getSuspiciousIps(since, 10),
+    routes: await getRouteStats(since),
     live: {
       streams: getConcurrencySnapshot(),
       uptimeSec: Math.round(process.uptime()),

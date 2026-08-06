@@ -20,7 +20,7 @@
 # production
 /build
 
-# local data (SQLite payments.db)
+# local data
 /data
 
 # misc

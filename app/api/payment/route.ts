@@ -33,9 +33,14 @@ async function handleGet(request: Request) {
     return Response.json({ message: "Некорректный тариф." }, { status: 400 });
   }
 
-  const amount = rate.priceRub * 100; // копейки
+  const amount = rate.priceRub * 100; // копейки для банка
   const title = `Подписка ${rate.title}`;
-  const paymentId = createPayment({ email, rateIndex, amount, title });
+  const paymentId = await createPayment({
+    email,
+    rateIndex,
+    amountRub: rate.priceRub,
+    title,
+  });
 
   try {
     const result = await initPayment({
@@ -52,7 +57,7 @@ async function handleGet(request: Request) {
       );
     }
 
-    setMerchantId(paymentId, result.PaymentId);
+    await setMerchantId(paymentId, result.PaymentId);
     return Response.json({ url: result.PaymentURL, payment_id: paymentId });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Ошибка сервера, попробуйте позже.";

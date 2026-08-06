@@ -27,7 +27,7 @@ async function handlePost(request: Request) {
 
   const orderId = Number(body.OrderId);
   const merchantId = String(body.PaymentId ?? "");
-  const payment = Number.isFinite(orderId) ? getPayment(orderId) : null;
+  const payment = Number.isFinite(orderId) ? await getPayment(orderId) : null;
 
   if (!payment || !merchantId) {
     return new Response("ERROR", { status: 404 });
@@ -48,7 +48,7 @@ async function handlePost(request: Request) {
   const rate = getRate(payment.rate_index);
   if (rate) {
     const until = Date.now() + rate.days * 24 * 60 * 60 * 1000;
-    markPaid(payment.id, until);
+    await markPaid(payment.id, until);
   }
 
   return new Response("OK");

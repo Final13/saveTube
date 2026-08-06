@@ -28,7 +28,7 @@ Next.js 16 + React 19, App Router, Tailwind v4, lucide-react, алиас `@/`. �
 
 ## Env
 
-См. `.env.example`: `NEXT_PUBLIC_SITE_URL` (обязателен в проде — metadataBase/sitemap/canonical), `YANDEX_VERIFICATION`, `GOOGLE_VERIFICATION`, `NEXT_PUBLIC_YM_ID`, `TBANK_TERMINAL_KEY`, `TBANK_PASSWORD`, `PROXY_TOKEN_SECRET` (обязателен в проде — без него прокси отдаёт 500), `NEXT_PUBLIC_RSY_ID` (без него РСЯ-баннер не рендерится), `RUTUBE_API_PROXY` (только для serverless — см. ниже).
+См. `.env.example`: `NEXT_PUBLIC_SITE_URL` (обязателен в проде — metadataBase/sitemap/canonical), `YANDEX_VERIFICATION`, `GOOGLE_VERIFICATION`, `NEXT_PUBLIC_YM_ID`, `TBANK_TERMINAL_KEY`, `TBANK_PASSWORD`, `MYSQL_HOST`/`MYSQL_PORT`/`MYSQL_DATABASE`/`MYSQL_USER`/`MYSQL_PASSWORD` + `MYSQL_TABLE_PREFIX` (платежи и метрики; без них платежи/метрики отключены), `PROXY_TOKEN_SECRET` (обязателен в проде — без него прокси отдаёт 500), `NEXT_PUBLIC_RSY_ID` (без него РСЯ-баннер не рендерится), `RUTUBE_API_PROXY` (только для serverless — см. ниже).
 
 ## Деплой на serverless (Vercel) — важно
 
@@ -36,14 +36,14 @@ Next.js 16 + React 19, App Router, Tailwind v4, lucide-react, алиас `@/`. �
 
 - `lib/rutube.ts`: `rutubeApiFetch()` — если задан `RUTUBE_API_PROXY=http://user:pass@host:port`, API-запросы идут через undici `ProxyAgent`. Плейлисты и сегменты — всегда напрямую (иначе весь видео-трафик пошёл бы через платный прокси).
 - Прокси нужен любой HTTP-с прокси с не-DC IP (подойдёт самый дешёвый RU-прокси: трафик ~5 КБ на конвертацию).
-- Остальные serverless-ограничения в силе: SQLite не пишется (платежи/метрики на Vercel не живут), in-memory лимиты — per-instance. Vercel = витрина со скачиванием, прод = VPS.
+- Остальные serverless-ограничения в силе: in-memory лимиты и кеши — per-instance. Платежи/метрики на MySQL работают и на Vercel, если база доступна из интернета (на проде MySQL на localhost VPS → для Vercel недоступна, там платежи отвечают «сервис недоступен»). Vercel = витрина со скачиванием, прод = VPS.
 
 ## Платежи T-Bank (не ломать без причины)
 
 - Тарифы в `lib/rates.ts`: 7д/39₽, 30д/99₽, 365д/299₽ — как на проде, менять только осознанно.
 - `lib/tbank.ts` — подпись: скалярные поля + `Password`, сортировка ключей case-insensitive, конкатенация значений, sha256. `Init` с чеком 54-ФЗ (УСН доход, `DATA.PaymentMethod=QR:true`), `GetState` для перепроверки.
 - Вебхук `app/api/payment/notification`: проверка подписи → `CONFIRMED` → перепроверка через `GetState` (защита от подделки) → идемпотентный `markPaid`. Ответ банку строго `"OK"`/`"ERROR"` (ERROR = банк пришлёт повтор).
-- Хранилище `lib/payments-store.ts` — SQLite (`data/payments.db`, better-sqlite3, WAL, globalThis-синглтон).
+- Хранилище `lib/payments-store.ts` — MySQL (serverless-mysql, `lib/mysql.ts`, globalThis-синглтон), таблица `{MYSQL_TABLE_PREFIX}payments` (дефолт `wp_`). Колонки унаследованы от старого бэкенда (`payment_id/payment_email/payment_rate_index/payment_amount/payment_title/payment_status/payment_merchant_id/payment_untiled_at`) — существующие оплаченные подписки в общей базе распознаются без миграции; `payment_amount` хранит РУБЛИ (как старые записи), в банк уходят копейки. `OrderId` = `payment_id`. Таблица создаётся сама, только если её нет.
 - Фронт: `components/premium-modal.tsx` (тарифы → email → `GET /api/payment` → редирект на `PaymentURL`; поллинг `/api/payment/status` 5с×25; экраны оплаты/проверки «я уже купил»). Cookie `user_email` на 365д ставит status-эндпоинт, `download-form` автопроверяет подписку по ней. Модалка перемонтируется по `key` — так обходится линт-правило set-state-in-effect, не «чинить».
 - `?success`/`?error` (SuccessURL/FailURL банка) открывают модалку через setTimeout — тоже осознанный обход линта.
 
@@ -71,7 +71,7 @@ Next.js 16 + React 19, App Router, Tailwind v4, lucide-react, алиас `@/`. �
 
 - Доступ: email из `ADMIN_EMAILS` + ключ `ADMIN_KEY` (форма на `/admin`); cookie `admin_session` = HMAC-подпись на ADMIN_KEY, 7 дней, httpOnly. **Без ADMIN_KEY админка закрыта полностью.** Логин rate-limit'ится (5/мин по IP). Логика — `lib/admin-auth.ts`, проверка везде через `getAdminEmail()`.
 - Сбор: обёртка `trackRequest(route, request, handler)` из `lib/metrics.ts` — стоит на всех API-роутах (включая вебхук и admin-login; новые роуты — оборачивать так же). Замеряет route/ip/status/ms, пишет fire-and-forget.
-- Хранилище: `lib/metrics-store.ts` — SQLite `data/metrics.db`, таблица `request_metrics`, автоочистка старше 3 дней раз в час при записи.
+- Хранилище: `lib/metrics-store.ts` — MySQL, таблица `{MYSQL_TABLE_PREFIX}request_metrics`, автоочистка старше 3 дней раз в час при записи. Без настроенной MySQL запись — no-op, дашборд показывает нули.
 - Отдача: `GET /api/admin/metrics?window=15m|1h|6h|24h|3d` — summary, таймсерия по бакетам, топ IP, подозрительные IP (много 429/403 = атаки/абьюз), статистика роутов, live (активные стримы из `getConcurrencySnapshot()` в rate-limit.ts + аптайм).
 - Дашборд `app/admin/metrics-dashboard.tsx` — автообновление 30с, SVG-график без внешних зависимостей (recharts специально не тянем). Страница `force-dynamic` + `robots: noindex`, в robots.txt `Disallow: /admin`.
 
