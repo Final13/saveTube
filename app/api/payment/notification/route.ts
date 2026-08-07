@@ -1,6 +1,8 @@
+import { after } from "next/server";
 import { getRate } from "@/lib/rates";
 import { getPayment, markPaid } from "@/lib/payments-store";
 import { getPaymentState, tbankToken } from "@/lib/tbank";
+import { sendPaymentSuccessEmail } from "@/lib/email";
 import { trackRequest } from "@/lib/metrics";
 
 // Вебхук T-Bank о статусе платежа.
@@ -48,7 +50,18 @@ async function handlePost(request: Request) {
   const rate = getRate(payment.rate_index);
   if (rate) {
     const until = Date.now() + rate.days * 24 * 60 * 60 * 1000;
-    await markPaid(payment.id, until);
+    const activated = await markPaid(payment.id, until);
+    if (activated) {
+      // Письмо об оплате — только при реальной активации (повторы вебхука не дублируют),
+      // после ответа банку, ошибки SMTP глушим
+      after(async () => {
+        try {
+          await sendPaymentSuccessEmail({ to: payment.email, title: rate.title, until });
+        } catch (error) {
+          console.error("Failed to send payment success email:", error);
+        }
+      });
+    }
   }
 
   return new Response("OK");

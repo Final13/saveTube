@@ -2,9 +2,10 @@ import type { Metadata } from "next";
 import { getAdminEmail } from "@/lib/admin-auth";
 import AdminLogin from "./admin-login";
 import MetricsDashboard from "./metrics-dashboard";
+import PaymentsPanel from "./payments-panel";
 
 export const metadata: Metadata = {
-  title: "Метрики",
+  title: "Админка",
   robots: { index: false, follow: false },
 };
 
@@ -17,7 +18,14 @@ export default async function AdminPage() {
   return (
     <div className="py-10">
       <h1 className="text-2xl font-bold text-slate-900">Метрики сервиса</h1>
-      {email ? <MetricsDashboard email={email} /> : <AdminLogin />}
+      {email ? (
+        <>
+          <PaymentsPanel />
+          <MetricsDashboard email={email} />
+        </>
+      ) : (
+        <AdminLogin />
+      )}
     </div>
   );
 }

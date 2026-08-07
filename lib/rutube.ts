@@ -61,6 +61,20 @@ async function rutubeApiFetch(url: string): Promise<ApiResponse> {
 
 const FETCH_TIMEOUT_MS = 15_000;
 
+/**
+ * Ошибка запроса к RuTube. retriable=false — повторять бессмысленно (контент недоступен).
+ * HTTP-ошибки (включая 404) — retriable: дата-центровый бан RuTube тоже отдаёт 404-заглушку,
+ * поэтому фоновая задача пробует другие прокси, прежде чем признать видео несуществующим.
+ */
+export class RutubeApiError extends Error {
+  constructor(
+    message: string,
+    readonly retriable: boolean,
+  ) {
+    super(message);
+  }
+}
+
 export interface VideoMetadata {
   title: string;
   author: string;
@@ -129,10 +143,11 @@ export function getQualityDescription(qualityLabel: string): string {
 async function fetchJson(url: string): Promise<any> {
   const res = await rutubeApiFetch(url);
   if (!res.ok) {
-    throw new Error(
+    throw new RutubeApiError(
       res.status === 404
         ? "Видео не найдено. Проверьте ссылку."
         : `RuTube недоступен (HTTP ${res.status}), попробуйте позже.`,
+      true,
     );
   }
   return res.json();
@@ -147,7 +162,10 @@ export async function getVideoInfo(videoId: string): Promise<VideoInfo> {
 
   const masterUrl: string | undefined = playOptions?.video_balancer?.default;
   if (!masterUrl) {
-    throw new Error("Видео недоступно для скачивания (возможно, оно скрыто или удалено).");
+    throw new RutubeApiError(
+      "Видео недоступно для скачивания (возможно, оно скрыто или удалено).",
+      false,
+    );
   }
 
   const metadata: VideoMetadata = {
@@ -159,7 +177,7 @@ export async function getVideoInfo(videoId: string): Promise<VideoInfo> {
 
   const qualities = await parseMasterPlaylist(masterUrl);
   if (!qualities.length) {
-    throw new Error("Нет доступных форматов для скачивания.");
+    throw new RutubeApiError("Нет доступных форматов для скачивания.", false);
   }
   return { metadata, qualities };
 }
@@ -171,7 +189,8 @@ async function parseMasterPlaylist(masterUrl: string): Promise<VideoQuality[]> {
     signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     cache: "no-store",
   });
-  if (!res.ok) throw new Error(`Не удалось получить список качеств (HTTP ${res.status}).`);
+  if (!res.ok)
+    throw new RutubeApiError(`Не удалось получить список качеств (HTTP ${res.status}).`, true);
   const text = await res.text();
 
   const lines = text.split("\n").map((l) => l.trim());

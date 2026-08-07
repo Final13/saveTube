@@ -65,6 +65,9 @@ export default function DownloadForm({ premiumBlock = false }: { premiumBlock?: 
         .then((data) => data.status && setPremium(true))
         .catch(() => {});
     }
+    // Подписка, купленная через шапку, — разблокирует потоки без перезагрузки
+    const onActivated = () => setPremium(true);
+    window.addEventListener("premium-activated", onActivated);
     const params = new URLSearchParams(window.location.search);
     // Отложенное открытие модалки после монтирования (react-hooks/set-state-in-effect)
     if (params.has("success") || params.has("error")) {
@@ -74,6 +77,7 @@ export default function DownloadForm({ premiumBlock = false }: { premiumBlock?: 
         setPremiumOpen(true);
       }, 400);
     }
+    return () => window.removeEventListener("premium-activated", onActivated);
   }, []);
 
   const activatePremium = () => {
@@ -102,13 +106,34 @@ export default function DownloadForm({ premiumBlock = false }: { premiumBlock?: 
         body: JSON.stringify({ url }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Ошибка сервера, попробуйте позже.");
-      setInfo(data);
+      if (!res.ok && res.status !== 202) {
+        throw new Error(data.message || "Ошибка сервера, попробуйте позже.");
+      }
+      // Быстрый путь — результат пришёл сразу; иначе пингуем статус задачи,
+      // пока бэк в фоне пробует запрос заново (опрос до 90 с)
+      const info =
+        data.status === "completed" ? data.data : await pollVideoInfoTask(data.task_id);
+      setInfo(info);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Ошибка сервера, попробуйте позже.");
     } finally {
       setLoading(false);
     }
+  };
+
+  const pollVideoInfoTask = async (taskId: string) => {
+    const deadline = Date.now() + 90_000;
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 1500));
+      const res = await fetch(`/api/get-video-info?task_id=${encodeURIComponent(taskId)}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Задание не найдено, попробуйте заново.");
+      if (data.status === "completed") return data.data;
+      if (data.status === "failed") {
+        throw new Error(data.message || "Не удалось обработать видео, попробуйте позже.");
+      }
+    }
+    throw new Error("RuTube отвечает слишком долго, попробуйте позже.");
   };
 
   const fetchSegment = async (segmentUrl: string): Promise<Blob> => {
@@ -340,13 +365,15 @@ export default function DownloadForm({ premiumBlock = false }: { premiumBlock?: 
 
           <div className="flex items-center gap-3">
             <span className="text-sm text-zinc-500">Потоки загрузки:</span>
-            <button
-              onClick={() => changeThreads(-1)}
-              aria-label="Убавить поток"
-              className="rounded-lg border border-zinc-300 p-1.5 text-zinc-600 transition hover:bg-zinc-200"
-            >
-              <Minus className="size-4" />
-            </button>
+            {premium && (
+              <button
+                onClick={() => changeThreads(-1)}
+                aria-label="Убавить поток"
+                className="rounded-lg border border-zinc-300 p-1.5 text-zinc-600 transition hover:bg-zinc-200"
+              >
+                <Minus className="size-4" />
+              </button>
+            )}
             <div className="flex items-center gap-1">
               {Array.from({ length: threads }).map((_, i) => (
                 <Loader2
@@ -355,13 +382,26 @@ export default function DownloadForm({ premiumBlock = false }: { premiumBlock?: 
                 />
               ))}
             </div>
-            <button
-              onClick={() => changeThreads(1)}
-              aria-label="Добавить поток"
-              className="rounded-lg border border-zinc-300 p-1.5 text-zinc-600 transition hover:bg-zinc-200"
-            >
-              <Plus className="size-4" />
-            </button>
+            {premium && (
+              <button
+                onClick={() => changeThreads(1)}
+                aria-label="Добавить поток"
+                className="rounded-lg border border-zinc-300 p-1.5 text-zinc-600 transition hover:bg-zinc-200"
+              >
+                <Plus className="size-4" />
+              </button>
+            )}
+            {!premium && (
+              <button
+                onClick={() => {
+                  setPremiumScreen("default");
+                  setPremiumOpen(true);
+                }}
+                className="flex items-center gap-1.5 rounded-lg bg-sky-600 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-sky-700"
+              >
+                <Zap className="size-4 fill-yellow-400 text-yellow-400" /> Ускорить
+              </button>
+            )}
           </div>
 
           {done && (

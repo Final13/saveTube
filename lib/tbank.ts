@@ -1,11 +1,21 @@
 import { createHash } from "crypto";
+import { Agent, fetch as undiciFetch } from "undici";
 import { SITE_URL } from "@/lib/site";
 
 // Интеграция T-Bank (Tinkoff API v2): создание платежа (Init) и проверка статуса (GetState).
 // Алгоритм подписи: только скалярные поля верхнего уровня + Password,
 // сортировка ключей регистронезависимо, конкатенация значений, sha256 hex.
+//
+// На dev-машине TLS до securepay.tinkoff.ru может перехватываться антивирусом
+// (self-signed cert в цепочке → fetch падает). Для локальной разработки проверка
+// сертификата отключена (как CURLOPT_SSL_VERIFYPEER=false в старом бэке); в проде — строгая.
 
 const API_URL = "https://securepay.tinkoff.ru/v2";
+
+const devInsecureAgent =
+  process.env.NODE_ENV !== "production"
+    ? new Agent({ connect: { rejectUnauthorized: false } })
+    : undefined;
 
 const TERMINAL_KEY = () => process.env.TBANK_TERMINAL_KEY ?? "";
 const PASSWORD = () => process.env.TBANK_PASSWORD ?? "";
@@ -31,13 +41,16 @@ export function tbankToken(data: Record<string, unknown>): string {
 }
 
 async function tbankRequest<T>(method: string, payload: Record<string, unknown>): Promise<T> {
-  const res = await fetch(`${API_URL}/${method}`, {
+  const init = {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ ...payload, Token: tbankToken(payload) }),
     signal: AbortSignal.timeout(15_000),
     cache: "no-store",
-  });
+  } as const;
+  const res = devInsecureAgent
+    ? await undiciFetch(`${API_URL}/${method}`, { ...init, dispatcher: devInsecureAgent })
+    : await fetch(`${API_URL}/${method}`, init);
   if (!res.ok) throw new Error(`T-Bank недоступен (HTTP ${res.status}).`);
   return res.json() as Promise<T>;
 }

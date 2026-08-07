@@ -40,7 +40,21 @@ function ensurePaymentsSchema(): Promise<void> {
           INDEX idx_payments_email (payment_email, payment_status, payment_untiled_at)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
       `);
+      // Колонка провайдера: NULL — легаси-записи (T-Bank)
+      const columns = (await db.query(
+        `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE TABLE_NAME = ? AND TABLE_SCHEMA = DATABASE() AND COLUMN_NAME = 'payment_provider'`,
+        [paymentsTable()],
+      )) as Array<{ COLUMN_NAME: string }>;
+      if (columns.length === 0) {
+        await db.query(
+          `ALTER TABLE ${paymentsTable()} ADD COLUMN payment_provider VARCHAR(10) NULL`,
+        );
+      }
     })();
+    schemaPromise.catch(() => {
+      schemaPromise = null;
+    });
   }
   return schemaPromise;
 }
@@ -71,6 +85,7 @@ export async function createPayment(input: {
   rateIndex: number;
   amountRub: number;
   title: string;
+  provider?: "tbank" | "yookassa";
 }): Promise<number> {
   await ensurePaymentsSchema();
   const db = getMysqlClient();
@@ -78,9 +93,9 @@ export async function createPayment(input: {
 
   const result = (await db.query(
     `INSERT INTO ${paymentsTable()}
-       (payment_email, payment_rate_index, payment_amount, payment_title, payment_status)
-     VALUES (?, ?, ?, ?, 0)`,
-    [input.email, input.rateIndex, input.amountRub, input.title],
+       (payment_email, payment_rate_index, payment_amount, payment_title, payment_status, payment_provider)
+     VALUES (?, ?, ?, ?, 0, ?)`,
+    [input.email, input.rateIndex, input.amountRub, input.title, input.provider ?? "tbank"],
   )) as { insertId: number };
   return Number(result.insertId);
 }
@@ -153,4 +168,70 @@ export async function isPaymentActive(id: number, email: string): Promise<boolea
     [id, email],
   )) as unknown[];
   return rows.length > 0;
+}
+
+export interface PaymentListItem {
+  id: number;
+  email: string;
+  rate_index: number;
+  amount: number; // рубли
+  title: string;
+  status: 0 | 1;
+  provider: string; // 'tbank' | 'yookassa' | 'legacy'
+  merchant_id: string | null;
+  subscription_until: number | null; // unix ms
+}
+
+/** Последние платежи (для админки), новые первыми. */
+export async function listPayments(limit = 50): Promise<PaymentListItem[]> {
+  await ensurePaymentsSchema();
+  const db = getMysqlClient();
+  if (!db) return [];
+
+  const rows = (await db.query(
+    `SELECT payment_id AS id, payment_email AS email, payment_rate_index AS rate_index,
+       payment_amount AS amount, payment_title AS title, payment_status AS status,
+       payment_provider AS provider, payment_merchant_id AS merchant_id,
+       UNIX_TIMESTAMP(payment_untiled_at) * 1000 AS subscription_until
+     FROM ${paymentsTable()} ORDER BY payment_id DESC LIMIT ?`,
+    [limit],
+  )) as Array<Record<string, unknown>>;
+  return rows.map((row) => ({
+    id: Number(row.id),
+    email: String(row.email),
+    rate_index: Number(row.rate_index),
+    amount: Number(row.amount),
+    title: String(row.title),
+    status: Number(row.status) === 1 ? 1 : 0,
+    provider: row.provider ? String(row.provider) : "legacy",
+    merchant_id: row.merchant_id ? String(row.merchant_id) : null,
+    subscription_until: row.subscription_until ? Number(row.subscription_until) : null,
+  }));
+}
+
+/** Последние платежи конкретного email (для ЛК), новые первыми. */
+export async function listPaymentsByEmail(email: string, limit = 10): Promise<PaymentListItem[]> {
+  await ensurePaymentsSchema();
+  const db = getMysqlClient();
+  if (!db) return [];
+
+  const rows = (await db.query(
+    `SELECT payment_id AS id, payment_email AS email, payment_rate_index AS rate_index,
+       payment_amount AS amount, payment_title AS title, payment_status AS status,
+       payment_provider AS provider, payment_merchant_id AS merchant_id,
+       UNIX_TIMESTAMP(payment_untiled_at) * 1000 AS subscription_until
+     FROM ${paymentsTable()} WHERE payment_email = ? ORDER BY payment_id DESC LIMIT ?`,
+    [email, limit],
+  )) as Array<Record<string, unknown>>;
+  return rows.map((row) => ({
+    id: Number(row.id),
+    email: String(row.email),
+    rate_index: Number(row.rate_index),
+    amount: Number(row.amount),
+    title: String(row.title),
+    status: Number(row.status) === 1 ? 1 : 0,
+    provider: row.provider ? String(row.provider) : "legacy",
+    merchant_id: row.merchant_id ? String(row.merchant_id) : null,
+    subscription_until: row.subscription_until ? Number(row.subscription_until) : null,
+  }));
 }

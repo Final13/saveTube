@@ -1,6 +1,6 @@
 import Link from "next/link";
 import RsyBanner from "@/components/rsy-banner";
-import { SITE_NAME } from "@/lib/site";
+import { SITE_NAME, SUPPORT_EMAIL } from "@/lib/site";
 
 export default function Footer() {
   return (
@@ -11,6 +11,9 @@ export default function Footer() {
             © {new Date().getFullYear()} {SITE_NAME} — скачивание видео с RuTube
           </p>
           <nav className="flex items-center gap-4">
+            <a href={`mailto:${SUPPORT_EMAIL}`} className="transition hover:text-zinc-900">
+              {SUPPORT_EMAIL}
+            </a>
             <Link href="/privacy-policy/" className="transition hover:text-zinc-900">
               Политика конфиденциальности
             </Link>
