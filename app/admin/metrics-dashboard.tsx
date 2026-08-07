@@ -24,7 +24,11 @@ interface MetricsData {
   topIps: Array<{ ip: string; total: number; blocked: number; forbidden: number }>;
   suspiciousIps: Array<{ ip: string; total: number; blocked: number; forbidden: number }>;
   routes: Array<{ route: string; total: number; errors: number; avg_ms: number }>;
-  live: { streams: Array<{ key: string; count: number }>; uptimeSec: number };
+  live: {
+    streams: Array<{ key: string; count: number }>;
+    queue: { queued: number; running: number; concurrency: number; maxQueue: number };
+    uptimeSec: number;
+  };
 }
 
 const WINDOWS = [
@@ -133,6 +137,11 @@ export default function MetricsDashboard({ email }: { email: string }) {
               label="Стримов сейчас"
               value={String(activeStreams)}
               tone={activeStreams > 0 ? "ok" : undefined}
+            />
+            <Card
+              label="Очередь задач"
+              value={`${data.live.queue.running + data.live.queue.queued} / ${data.live.queue.maxQueue}`}
+              tone={data.live.queue.queued > 0 ? "warn" : data.live.queue.running > 0 ? "ok" : undefined}
             />
             <Card label="Аптайм" value={formatUptime(data.live.uptimeSec)} />
           </div>

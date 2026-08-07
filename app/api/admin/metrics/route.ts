@@ -7,6 +7,7 @@ import {
   getTopIps,
 } from "@/lib/metrics-store";
 import { getConcurrencySnapshot } from "@/lib/rate-limit";
+import { getTaskQueueSnapshot } from "@/lib/task-queue";
 
 // Доступные окна и размер бакета агрегации для графика
 const WINDOWS: Record<string, { ms: number; bucketMs: number }> = {
@@ -37,6 +38,7 @@ export async function GET(request: Request) {
     routes: await getRouteStats(since),
     live: {
       streams: getConcurrencySnapshot(),
+      queue: getTaskQueueSnapshot(),
       uptimeSec: Math.round(process.uptime()),
     },
   });

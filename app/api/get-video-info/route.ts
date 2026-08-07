@@ -1,7 +1,8 @@
 import { cacheGet } from "@/lib/cache";
 import { getClientIp, rateLimit } from "@/lib/rate-limit";
 import { parseRutubeUrl, type VideoInfo } from "@/lib/rutube";
-import { createTask, getTask } from "@/lib/tasks";
+import { createTask, failTask, findActiveTaskByKey, getTask } from "@/lib/tasks";
+import { enqueueTask, QueueFullError } from "@/lib/task-queue";
 import { runVideoInfoTask } from "@/lib/video-info-task";
 import { trackRequest } from "@/lib/metrics";
 
@@ -9,6 +10,9 @@ import { trackRequest } from "@/lib/metrics";
 // GET ?task_id до completed/failed. Если RuTube отвечает быстро — результат отдаём
 // прямо в POST (inline-бюджет), опрос не нужен. Если «залагал» — обработка продолжается
 // в фоне с ретраями, клиент просто ждёт (запрос не падает по таймауту).
+// Обработка идёт через очередь с лимитом параллелизма (lib/task-queue.ts): под нагрузкой
+// задачи ждут FIFO, переполненная очередь отклоняет новые — нода не умирает.
+// Повторный POST того же видео получает уже созданную задачу (дедуп по videoId).
 
 const RATE_LIMIT_PER_MINUTE = 10;
 const POLL_RATE_LIMIT_PER_MINUTE = 120;
@@ -50,10 +54,33 @@ async function handlePost(request: Request) {
     return Response.json({ task_id: task.task_id, status: "completed", data: cached });
   }
 
-  const task = createTask("get_video_info");
+  // Дедуп: задача на это видео уже обрабатывается — отдаём её, новую не плодим
+  const existing = findActiveTaskByKey("get_video_info", videoId);
+  if (existing) {
+    return Response.json({ task_id: existing.task_id, status: "pending" }, { status: 202 });
+  }
 
-  // Фоновая обработка с ретраями; не ждём дольше inline-бюджета
-  const processing = runVideoInfoTask(task.task_id, videoId).catch(() => {});
+  const task = createTask("get_video_info", videoId);
+
+  // Фоновая обработка через очередь (лимит параллелизма); не ждём дольше inline-бюджета
+  let processing: Promise<void>;
+  try {
+    processing = enqueueTask(() =>
+      runVideoInfoTask(task.task_id, videoId).then(
+        () => {},
+        () => {},
+      ),
+    );
+  } catch (error) {
+    if (error instanceof QueueFullError) {
+      failTask(task.task_id, "Сервер перегружен, попробуйте через минуту.");
+      return Response.json(
+        { message: "Сервер перегружен, попробуйте через минуту." },
+        { status: 429 },
+      );
+    }
+    throw error;
+  }
   await Promise.race([
     processing,
     new Promise((resolve) => setTimeout(resolve, INLINE_BUDGET_MS())),
