@@ -51,6 +51,22 @@ function ensurePaymentsSchema(): Promise<void> {
           `ALTER TABLE ${paymentsTable()} ADD COLUMN payment_provider VARCHAR(10) NULL`,
         );
       }
+      // Легаси-таблица от старого бэкенда могла создаться с NOT NULL без дефолта
+      // на служебных колонках — INSERT тогда падает в strict mode. Приводим к NULL
+      // (данные не меняются, старые записи не трогаются).
+      const strictCols = (await db.query(
+        `SELECT COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE TABLE_NAME = ? AND TABLE_SCHEMA = DATABASE()
+           AND COLUMN_NAME IN ('payment_merchant_id', 'payment_untiled_at')`,
+        [paymentsTable()],
+      )) as Array<{ COLUMN_NAME: string; COLUMN_TYPE: string; IS_NULLABLE: string }>;
+      for (const col of strictCols) {
+        if (col.IS_NULLABLE === "NO") {
+          await db.query(
+            `ALTER TABLE ${paymentsTable()} MODIFY COLUMN ${col.COLUMN_NAME} ${col.COLUMN_TYPE} NULL`,
+          );
+        }
+      }
     })();
     schemaPromise.catch(() => {
       schemaPromise = null;
@@ -91,10 +107,12 @@ export async function createPayment(input: {
   const db = getMysqlClient();
   if (!db) throw new Error("Сервис временно недоступен, попробуйте позже.");
 
+  // payment_merchant_id задаём явно: в легаси-таблице на боевой базе колонка
+  // NOT NULL без дефолта — пропуск поля роняет INSERT в strict mode.
   const result = (await db.query(
     `INSERT INTO ${paymentsTable()}
-       (payment_email, payment_rate_index, payment_amount, payment_title, payment_status, payment_provider)
-     VALUES (?, ?, ?, ?, 0, ?)`,
+       (payment_email, payment_rate_index, payment_amount, payment_title, payment_status, payment_merchant_id, payment_provider)
+     VALUES (?, ?, ?, ?, 0, '', ?)`,
     [input.email, input.rateIndex, input.amountRub, input.title, input.provider ?? "tbank"],
   )) as { insertId: number };
   return Number(result.insertId);
