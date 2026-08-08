@@ -81,7 +81,7 @@ export default function MetricsDashboard({ email }: { email: string }) {
   return (
     <div className="mt-6">
       <div className="flex flex-wrap items-center gap-2">
-        <div className="flex rounded-lg border border-slate-200 bg-white p-1">
+        <div className="flex rounded-lg border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-1">
           {WINDOWS.map((w) => (
             <button
               key={w.key}
@@ -89,7 +89,7 @@ export default function MetricsDashboard({ email }: { email: string }) {
               className={`rounded-md px-3 py-1.5 text-sm ${
                 windowKey === w.key
                   ? "bg-sky-600 font-semibold text-white"
-                  : "text-slate-600 hover:bg-slate-100"
+                  : "text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-800"
               }`}
             >
               {w.label}
@@ -98,10 +98,10 @@ export default function MetricsDashboard({ email }: { email: string }) {
         </div>
         <span className="text-xs text-slate-400">обновляется каждые 30 с</span>
         <div className="ml-auto flex items-center gap-3">
-          <span className="text-sm text-slate-500">{email}</span>
+          <span className="text-sm text-slate-500 dark:text-zinc-400">{email}</span>
           <button
             onClick={handleLogout}
-            className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100"
+            className="rounded-lg border border-slate-300 dark:border-zinc-700 px-3 py-1.5 text-sm text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-800"
           >
             Выйти
           </button>
@@ -110,7 +110,7 @@ export default function MetricsDashboard({ email }: { email: string }) {
 
       {error && <p className="mt-4 text-sm text-red-600">{error}</p>}
 
-      {!data && !error && <p className="mt-6 text-sm text-slate-500">Загрузка…</p>}
+      {!data && !error && <p className="mt-6 text-sm text-slate-500 dark:text-zinc-400">Загрузка…</p>}
 
       {data && (
         <>
@@ -146,10 +146,10 @@ export default function MetricsDashboard({ email }: { email: string }) {
             <Card label="Аптайм" value={formatUptime(data.live.uptimeSec)} />
           </div>
 
-          <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-            <h2 className="text-sm font-semibold text-slate-700">Нагрузка по времени</h2>
+          <div className="mt-4 rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-4 shadow-sm">
+            <h2 className="text-sm font-semibold text-slate-700 dark:text-zinc-200">Нагрузка по времени</h2>
             <Chart series={data.timeseries} windowKey={windowKey} />
-            <div className="mt-2 flex gap-4 text-xs text-slate-500">
+            <div className="mt-2 flex gap-4 text-xs text-slate-500 dark:text-zinc-400">
               <Legend color="#0284c7" label="все запросы" />
               <Legend color="#d97706" label="429 + 403 (лимиты/отказы)" />
               <Legend color="#dc2626" label="5xx (ошибки)" />
@@ -165,8 +165,8 @@ export default function MetricsDashboard({ email }: { email: string }) {
             <IpTable title="Топ IP по запросам" rows={data.topIps} />
           </div>
 
-          <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-            <h2 className="text-sm font-semibold text-slate-700">Роуты</h2>
+          <div className="mt-4 rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-4 shadow-sm">
+            <h2 className="text-sm font-semibold text-slate-700 dark:text-zinc-200">Роуты</h2>
             <table className="mt-2 w-full text-sm">
               <thead>
                 <tr className="text-left text-xs text-slate-400">
@@ -178,7 +178,7 @@ export default function MetricsDashboard({ email }: { email: string }) {
               </thead>
               <tbody>
                 {data.routes.map((r) => (
-                  <tr key={r.route} className="border-t border-slate-100 text-slate-700">
+                  <tr key={r.route} className="border-t border-slate-100 dark:border-zinc-800 text-slate-700 dark:text-zinc-200">
                     <td className="py-1.5 pr-4 font-mono text-xs">{r.route}</td>
                     <td className="py-1.5 pr-4">{r.total}</td>
                     <td
@@ -221,9 +221,9 @@ function Card({
         ? "text-amber-600"
         : tone === "ok"
           ? "text-emerald-600"
-          : "text-slate-900";
+          : "text-slate-900 dark:text-zinc-100";
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+    <div className="rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-3 shadow-sm">
       <p className="text-xs text-slate-400">{label}</p>
       <p className={`mt-1 text-lg font-bold ${color}`}>{value}</p>
     </div>
@@ -250,11 +250,11 @@ function IpTable({
 }) {
   return (
     <div
-      className={`rounded-xl border bg-white p-4 shadow-sm ${
-        highlight ? "border-amber-200" : "border-slate-200"
+      className={`rounded-xl border bg-white dark:bg-zinc-900 p-4 shadow-sm dark:bg-zinc-900 ${
+        highlight ? "border-amber-200 dark:border-amber-900" : "border-slate-200 dark:border-zinc-800"
       }`}
     >
-      <h2 className="text-sm font-semibold text-slate-700">{title}</h2>
+      <h2 className="text-sm font-semibold text-slate-700 dark:text-zinc-200">{title}</h2>
       <table className="mt-2 w-full text-sm">
         <thead>
           <tr className="text-left text-xs text-slate-400">
@@ -266,7 +266,7 @@ function IpTable({
         </thead>
         <tbody>
           {rows.map((r) => (
-            <tr key={r.ip} className="border-t border-slate-100 text-slate-700">
+            <tr key={r.ip} className="border-t border-slate-100 dark:border-zinc-800 text-slate-700 dark:text-zinc-200">
               <td className="py-1.5 pr-4 font-mono text-xs">{r.ip}</td>
               <td className="py-1.5 pr-4">{r.total}</td>
               <td className={`py-1.5 pr-4 ${r.blocked > 0 ? "font-semibold text-amber-600" : ""}`}>
@@ -327,7 +327,7 @@ function Chart({ series, windowKey }: { series: MetricsData["timeseries"]; windo
             x2={CHART_W - PAD.right}
             y1={y(v)}
             y2={y(v)}
-            stroke="#e2e8f0"
+            stroke="#e2e8f0" className="dark:stroke-zinc-700"
             strokeWidth="1"
           />
           <text x={PAD.left - 6} y={y(v) + 3} textAnchor="end" fontSize="10" fill="#94a3b8">

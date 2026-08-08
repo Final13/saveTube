@@ -26,6 +26,15 @@ Next.js 16 + React 19, App Router, Tailwind v4, lucide-react, алиас `@/`. �
 - Яндекс.Метрика — `components/metrika.tsx` (lazyOnload) по env `NEXT_PUBLIC_YM_ID`, цели через `lib/metrika.ts` (стаб-очередь `ym.a`).
 - Структурированные данные (JSON-LD) не используются.
 
+## Темы (светлая/тёмная, зафиксировано)
+
+- Cookie `theme` = `light`/`dark`/`system` (365 дней, path=/, SameSite=Lax). `lib/theme.tsx` — ThemeProvider + `useTheme()` (`theme`, `resolvedTheme`, `setTheme`), при `system` слушает prefers-color-scheme.
+- `app/layout.tsx` — серверное чтение cookie (поэтому layout async, страницы стали dynamic), класс `dark`/`light` на `<html>` + `suppressHydrationWarning`, инлайн-скрипт перед `<body>` ставит класс на documentElement ДО рендера (анти-FOUC, не удалять). ThemeProvider оборачивает всё в body.
+- Tailwind v4 class-стратегия: `@custom-variant dark (&:where(.dark, .dark *))` в globals.css; базовые цвета body и `.prose-savetube` — тоже там. Тёмная палитра: фон zinc-950, карточки zinc-800/900, текст zinc-100/400, бордеры zinc-700/800, акценты sky/amber сохраняем (в dark — оттенок светлее).
+- Переключатель — `components/theme-toggle.tsx` в шапке (pill-свитчер как на playerok: ползунок с солнцем/луной со звёздами, клик = light↔dark, `role="switch"`). Положение ползунка — через SSR-проп `initialTheme` из layout (как `initialLoggedIn` в шапке): при явной куке рендерится сразу верно, при system/без куки ползунок появляется после mount сразу в конечной позиции — дёрганья нет. Шапка (`components/header.tsx`) также получает `initialLoggedIn` из layout (`getSession()`) — «Войти»/«Кабинет» не мигает при перезагрузке.
+- Курсор-рука на интерактивных элементах — глобальным CSS-правилом в globals.css (`button:not(:disabled)`, `[role="switch"]`, `select` → pointer; disabled → not-allowed). Tailwind v4 не ставит pointer на button по умолчанию.
+- Новым компонентам и страницам — обязательно `dark:`-варианты классов. Светлую тему не менять.
+
 ## Env
 
 См. `.env.example`: `NEXT_PUBLIC_SITE_URL` (обязателен в проде — metadataBase/sitemap/canonical), `YANDEX_VERIFICATION`, `GOOGLE_VERIFICATION`, `NEXT_PUBLIC_YM_ID`, `TBANK_TERMINAL_KEY`, `TBANK_PASSWORD`, `MYSQL_HOST`/`MYSQL_PORT`/`MYSQL_DATABASE`/`MYSQL_USER`/`MYSQL_PASSWORD` + `MYSQL_TABLE_PREFIX` (платежи и метрики; без них платежи/метрики отключены), `PROXY_TOKEN_SECRET` (обязателен в проде — без него прокси отдаёт 500), `NEXT_PUBLIC_RSY_ID` (без него РСЯ-баннер не рендерится), `RUTUBE_API_PROXY` (только для serverless — см. ниже), `SESSION_SECRET` (iron-session ЛК), `REDIS_URL` (OTP-коды входа в ЛК; без него auth-роуты отвечают 503, оплата не ломается), `SMTP_HOST`/`SMTP_PORT`/`SMTP_USER`/`SMTP_PASS`/`SMTP_FROM` (письма ЛК; без них письма тихо пропускаются).

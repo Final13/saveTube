@@ -263,7 +263,7 @@ export default function DownloadForm({ premiumBlock = false }: { premiumBlock?: 
             onKeyDown={(e) => e.key === "Enter" && !loading && handleConvert()}
             placeholder="https://rutube.ru/video/..."
             disabled={loading || downloading}
-            className="h-12 flex-1 rounded-lg border border-zinc-300 bg-white px-4 text-zinc-900 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-200 disabled:opacity-60"
+            className="h-12 flex-1 rounded-lg border border-zinc-300 bg-white px-4 text-zinc-900 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-200 dark:focus:ring-sky-800 disabled:opacity-60"
           />
           <button
             onClick={handleConvert}
@@ -280,7 +280,7 @@ export default function DownloadForm({ premiumBlock = false }: { premiumBlock?: 
         </div>
 
         {error && (
-          <div className="flex items-start justify-between gap-3 rounded-lg border border-red-200 bg-red-50 p-3 text-red-700">
+          <div className="flex items-start justify-between gap-3 rounded-lg border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950 p-3 text-red-700 dark:text-red-400">
             <div className="flex items-start gap-2">
               <CircleAlert className="mt-0.5 size-5 shrink-0" />
               <p>{error}</p>
@@ -294,24 +294,24 @@ export default function DownloadForm({ premiumBlock = false }: { premiumBlock?: 
 
       {/* Результат: метаданные и качества */}
       {info && !downloading && (
-        <div className="mt-6 space-y-4 rounded-xl border border-zinc-200 bg-zinc-50 p-4">
+        <div className="mt-6 space-y-4 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900 p-4">
           <div className="flex items-start justify-between gap-4">
             <div className="space-y-1">
-              <p className="text-sm text-zinc-500">Автор видео</p>
+              <p className="text-sm text-zinc-500 dark:text-zinc-400">Автор видео</p>
               <p className="font-medium">{info.metadata.author}</p>
-              <p className="pt-2 text-sm text-zinc-500">Заголовок видео</p>
+              <p className="pt-2 text-sm text-zinc-500 dark:text-zinc-400">Заголовок видео</p>
               <p className="font-medium">{info.metadata.title}</p>
             </div>
             <button
               onClick={reset}
               aria-label="Сбросить"
-              className="rounded-lg p-2 text-zinc-400 transition hover:bg-zinc-200 hover:text-zinc-700"
+              className="rounded-lg p-2 text-zinc-400 transition hover:bg-zinc-200 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"
             >
               <X className="size-5" />
             </button>
           </div>
 
-          <p className="text-sm text-zinc-500">Выберите качество видео</p>
+          <p className="text-sm text-zinc-500 dark:text-zinc-400">Выберите качество видео</p>
           {info.qualities.length === 0 ? (
             <p>Нет доступных форматов для скачивания</p>
           ) : (
@@ -319,7 +319,7 @@ export default function DownloadForm({ premiumBlock = false }: { premiumBlock?: 
               {info.qualities.map((q, i) => (
                 <div
                   key={q.resolution}
-                  className="flex flex-col justify-between space-y-3 rounded-lg bg-white p-3 shadow-sm"
+                  className="flex flex-col justify-between space-y-3 rounded-lg bg-white p-3 shadow-sm dark:bg-zinc-800"
                 >
                   <div className="space-y-1 text-sm">
                     <p className="flex items-center justify-between">
@@ -353,11 +353,11 @@ export default function DownloadForm({ premiumBlock = false }: { premiumBlock?: 
 
       {/* Прогресс загрузки */}
       {(downloading || done) && (
-        <div className="mt-6 space-y-4 rounded-xl border border-zinc-200 bg-zinc-50 p-4">
+        <div className="mt-6 space-y-4 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900 p-4">
           <p className="font-medium">
             {done ? "Загрузка завершена!" : `Скачано ${progress}% (${downloaded} / ${total})`}
           </p>
-          <div className="h-3 overflow-hidden rounded-full bg-zinc-200">
+          <div className="h-3 overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-700">
             <div
               className="h-full rounded-full bg-sky-600 transition-all duration-300"
               style={{ width: `${progress}%` }}
@@ -365,12 +365,12 @@ export default function DownloadForm({ premiumBlock = false }: { premiumBlock?: 
           </div>
 
           <div className="flex items-center gap-3">
-            <span className="text-sm text-zinc-500">Потоки загрузки:</span>
+            <span className="text-sm text-zinc-500 dark:text-zinc-400">Потоки загрузки:</span>
             {premium && (
               <button
                 onClick={() => changeThreads(-1)}
                 aria-label="Убавить поток"
-                className="rounded-lg border border-zinc-300 p-1.5 text-zinc-600 transition hover:bg-zinc-200"
+                className="rounded-lg border border-zinc-300 dark:border-zinc-700 p-1.5 text-zinc-600 dark:text-zinc-400 transition hover:bg-zinc-200 dark:hover:bg-zinc-800"
               >
                 <Minus className="size-4" />
               </button>
@@ -379,7 +379,7 @@ export default function DownloadForm({ premiumBlock = false }: { premiumBlock?: 
               {Array.from({ length: threads }).map((_, i) => (
                 <Loader2
                   key={i}
-                  className={`size-4 ${i < activeThreads ? "animate-spin text-sky-600" : "text-zinc-300"}`}
+                  className={`size-4 ${i < activeThreads ? "animate-spin text-sky-600" : "text-zinc-300 dark:text-zinc-600"}`}
                 />
               ))}
             </div>
@@ -387,7 +387,7 @@ export default function DownloadForm({ premiumBlock = false }: { premiumBlock?: 
               <button
                 onClick={() => changeThreads(1)}
                 aria-label="Добавить поток"
-                className="rounded-lg border border-zinc-300 p-1.5 text-zinc-600 transition hover:bg-zinc-200"
+                className="rounded-lg border border-zinc-300 dark:border-zinc-700 p-1.5 text-zinc-600 dark:text-zinc-400 transition hover:bg-zinc-200 dark:hover:bg-zinc-800"
               >
                 <Plus className="size-4" />
               </button>
@@ -408,7 +408,7 @@ export default function DownloadForm({ premiumBlock = false }: { premiumBlock?: 
           {done && (
             <button
               onClick={reset}
-              className="rounded-lg border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 transition hover:bg-zinc-200"
+              className="rounded-lg border border-zinc-300 dark:border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-700 dark:text-zinc-300 transition hover:bg-zinc-200 dark:hover:bg-zinc-800"
             >
               Скачать другое видео
             </button>
@@ -418,11 +418,11 @@ export default function DownloadForm({ premiumBlock = false }: { premiumBlock?: 
 
       {/* Блок «Ускорить загрузку» */}
       {premiumBlock && !premium && (
-        <div className="mt-6 space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
-          <p className="flex items-center gap-2 font-semibold text-amber-800">
+        <div className="mt-6 space-y-3 rounded-xl border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950 p-4">
+          <p className="flex items-center gap-2 font-semibold text-amber-800 dark:text-amber-300">
             <Zap className="size-5" /> Ускорить загрузку
           </p>
-          <p className="text-sm text-amber-800">
+          <p className="text-sm text-amber-800 dark:text-amber-300">
             По умолчанию скачивание видео происходит в 2 потока. Подписка позволит указать любое
             количество потоков и скачивать видео значительно быстрее.
           </p>
@@ -431,7 +431,7 @@ export default function DownloadForm({ premiumBlock = false }: { premiumBlock?: 
               setPremiumScreen("default");
               setPremiumOpen(true);
             }}
-            className="rounded-lg bg-amber-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-amber-600"
+            className="rounded-lg bg-amber-50 dark:bg-amber-9500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-amber-600"
           >
             Выберите подписку
           </button>

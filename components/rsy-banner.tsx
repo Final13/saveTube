@@ -115,7 +115,7 @@ export default function RsyBanner() {
         }}
       />
       <div
-        className={`fixed inset-x-0 bottom-0 z-40 bg-white shadow-[0_-4px_16px_rgba(0,0,0,0.12)] ${
+        className={`fixed inset-x-0 bottom-0 z-40 bg-white dark:bg-zinc-900 shadow-[0_-4px_16px_rgba(0,0,0,0.12)] ${
           open ? "block" : "hidden"
         }`}
       >

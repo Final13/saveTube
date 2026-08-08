@@ -15,7 +15,7 @@ export default function FormTabs({ active }: { active: "main" | "link" }) {
         tab.key === active ? (
           <span
             key={tab.key}
-            className="rounded-md bg-slate-200 px-3 py-1.5 text-sm font-medium text-slate-700"
+            className="rounded-md bg-slate-200 px-3 py-1.5 text-sm font-medium text-slate-700 dark:bg-zinc-800 dark:text-zinc-200"
           >
             {tab.label}
           </span>
@@ -23,7 +23,7 @@ export default function FormTabs({ active }: { active: "main" | "link" }) {
           <Link
             key={tab.key}
             href={tab.href}
-            className="rounded-md bg-slate-100 px-3 py-1.5 text-sm text-slate-500 transition hover:bg-slate-200 hover:text-slate-700"
+            className="rounded-md bg-slate-100 px-3 py-1.5 text-sm text-slate-500 transition hover:bg-slate-200 hover:text-slate-700 dark:bg-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
           >
             {tab.label}
           </Link>

@@ -167,7 +167,7 @@ export default function AccountPanel() {
 
   if (authed === null) {
     return (
-      <div className="mt-4 flex items-center gap-2 text-zinc-500">
+      <div className="mt-4 flex items-center gap-2 text-zinc-500 dark:text-zinc-400">
         <Loader2 className="size-5 animate-spin" /> Загрузка…
       </div>
     );
@@ -176,18 +176,18 @@ export default function AccountPanel() {
   if (!authed) {
     return (
       <div className="mt-4 max-w-md space-y-4">
-        <p className="text-sm text-zinc-600">
+        <p className="text-sm text-zinc-600 dark:text-zinc-400">
           Вход — по одноразовому коду из письма, пароль не нужен. Если аккаунта ещё нет, он
           создастся автоматически (так же, как при первой оплате подписки).
         </p>
-        <div className="space-y-3 rounded-xl border border-zinc-200 bg-zinc-50 p-4">
+        <div className="space-y-3 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900 p-4">
           <input
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="E-Mail"
             disabled={codeSent}
-            className="h-12 w-full rounded-lg border border-zinc-300 bg-white px-4 text-zinc-900 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-200 disabled:opacity-60"
+            className="h-12 w-full rounded-lg border border-zinc-300 bg-white px-4 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100 text-zinc-900 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-200 dark:focus:ring-sky-800 disabled:opacity-60"
           />
           {codeSent && (
             <input
@@ -199,16 +199,16 @@ export default function AccountPanel() {
               onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
               onKeyDown={(e) => e.key === "Enter" && code.length === 6 && void handleVerifyCode()}
               placeholder="Код из письма (6 цифр)"
-              className="h-12 w-full rounded-lg border border-zinc-300 bg-white px-4 text-center text-lg tracking-[0.5em] text-zinc-900 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-200"
+              className="h-12 w-full rounded-lg border border-zinc-300 bg-white px-4 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100 text-center text-lg tracking-[0.5em] text-zinc-900 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-200 dark:focus:ring-sky-800"
             />
           )}
 
           {codeSent && !codeExpired && (
-            <p className="text-sm text-zinc-600">
+            <p className="text-sm text-zinc-600 dark:text-zinc-400">
               Код отправлен на {email.trim()}. Действует 5 минут.
             </p>
           )}
-          {authError && <p className="text-sm text-red-600">{authError}</p>}
+          {authError && <p className="text-sm text-red-600 dark:text-red-400">{authError}</p>}
 
           {!codeSent ? (
             <button
@@ -232,7 +232,7 @@ export default function AccountPanel() {
               <button
                 onClick={() => void handleRequestCode()}
                 disabled={authLoading}
-                className="w-full text-center text-sm text-sky-700 transition hover:underline disabled:opacity-60"
+                className="w-full text-center text-sm text-sky-700 dark:text-sky-400 transition hover:underline disabled:opacity-60"
               >
                 {codeExpired ? "Выслать код повторно" : "Не пришёл код? Отправить ещё раз"}
               </button>
@@ -243,7 +243,7 @@ export default function AccountPanel() {
                   setCodeExpired(false);
                   setAuthError("");
                 }}
-                className="w-full text-center text-sm text-zinc-500 transition hover:underline"
+                className="w-full text-center text-sm text-zinc-500 dark:text-zinc-400 transition hover:underline"
               >
                 Изменить E-Mail
               </button>
@@ -259,20 +259,20 @@ export default function AccountPanel() {
   return (
     <div className="mt-4 space-y-4">
       <div className="flex items-center justify-between gap-3">
-        <p className="text-sm text-zinc-600">{data?.email}</p>
+        <p className="text-sm text-zinc-600 dark:text-zinc-400">{data?.email}</p>
         <button
           onClick={() => void handleLogout()}
-          className="flex items-center gap-2 rounded-lg border border-zinc-300 px-3 py-2 text-sm font-medium text-zinc-600 transition hover:bg-zinc-100"
+          className="flex items-center gap-2 rounded-lg border border-zinc-300 dark:border-zinc-700 px-3 py-2 text-sm font-medium text-zinc-600 dark:text-zinc-400 transition hover:bg-zinc-100 dark:hover:bg-zinc-800"
         >
           <LogOut className="size-4" />
           Выйти
         </button>
       </div>
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
 
       {loading && !data && (
-        <p className="flex items-center gap-2 text-zinc-500">
+        <p className="flex items-center gap-2 text-zinc-500 dark:text-zinc-400">
           <Loader2 className="size-5 animate-spin" /> Загрузка…
         </p>
       )}
@@ -280,50 +280,50 @@ export default function AccountPanel() {
       {data && (
         <>
           {/* Статус подписки */}
-          <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4">
+          <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900 p-4">
             {premiumActive ? (
-              <p className="flex items-center gap-2 font-semibold text-emerald-700">
+              <p className="flex items-center gap-2 font-semibold text-emerald-700 dark:text-emerald-400">
                 <Zap className="size-5 fill-amber-400 text-amber-400" />
                 Подписка активна до {formatDate(data.premium_until)}
               </p>
             ) : (
-              <p className="font-medium text-zinc-600">Активной подписки нет.</p>
+              <p className="font-medium text-zinc-600 dark:text-zinc-400">Активной подписки нет.</p>
             )}
           </div>
 
           {/* Привязанная карта / автопродление */}
-          <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4">
-            <h2 className="font-semibold text-slate-800">Автопродление</h2>
+          <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900 p-4">
+            <h2 className="font-semibold text-slate-800 dark:text-zinc-100">Автопродление</h2>
             {data.recurrent ? (
               <div className="mt-3 flex flex-wrap items-center gap-3">
-                <span className="flex items-center gap-2 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm">
-                  <CreditCard className="size-5 text-zinc-500" />
+                <span className="flex items-center gap-2 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-3 py-2 text-sm">
+                  <CreditCard className="size-5 text-zinc-500 dark:text-zinc-400" />
                   {data.recurrent.card_type ? `${data.recurrent.card_type} ` : ""}••{" "}
                   {data.recurrent.card_last4 ?? "····"}
                 </span>
-                <span className="text-sm text-zinc-600">
+                <span className="text-sm text-zinc-600 dark:text-zinc-400">
                   {RATES[data.recurrent.rate_index]?.title ?? "Подписка"}, следующее списание —{" "}
                   {formatDate(data.recurrent.next_billing_at)}
                 </span>
                 <button
                   onClick={handleUnlink}
                   disabled={unlinking}
-                  className="ml-auto flex items-center gap-2 rounded-lg border border-red-300 px-3 py-2 text-sm font-medium text-red-600 transition hover:bg-red-50 disabled:opacity-60"
+                  className="ml-auto flex items-center gap-2 rounded-lg border border-red-300 px-3 py-2 text-sm font-medium text-red-600 dark:text-red-400 transition hover:bg-red-50 dark:hover:bg-red-950 disabled:opacity-60"
                 >
                   {unlinking && <Loader2 className="size-4 animate-spin" />}
                   Отвязать карту
                 </button>
               </div>
             ) : (
-              <p className="mt-2 text-sm text-zinc-600">
+              <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
                 Карта не привязана. Автопродление появится после оплаты подписки через ЮKassa.
               </p>
             )}
           </div>
 
           {/* История платежей */}
-          <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4">
-            <h2 className="font-semibold text-slate-800">История платежей</h2>
+          <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900 p-4">
+            <h2 className="font-semibold text-slate-800 dark:text-zinc-100">История платежей</h2>
             <table className="mt-2 w-full text-sm">
               <thead>
                 <tr className="text-left text-xs text-zinc-400">
@@ -337,13 +337,13 @@ export default function AccountPanel() {
               </thead>
               <tbody>
                 {data.payments.map((p) => (
-                  <tr key={p.id} className="border-t border-zinc-200 text-zinc-700">
+                  <tr key={p.id} className="border-t border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300">
                     <td className="py-1.5 pr-4 font-mono text-xs">{p.id}</td>
                     <td className="py-1.5 pr-4">{p.title}</td>
                     <td className="py-1.5 pr-4">{p.amount} ₽</td>
                     <td className="py-1.5 pr-4">{providerLabel(p.provider)}</td>
                     <td
-                      className={`py-1.5 pr-4 ${p.status === 1 ? "text-emerald-600" : "text-amber-600"}`}
+                      className={`py-1.5 pr-4 ${p.status === 1 ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400"}`}
                     >
                       {p.status === 1 ? "оплачен" : "ожидает"}
                     </td>

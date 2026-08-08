@@ -5,7 +5,7 @@ export const metadata: Metadata = {
   title: "Политика конфиденциальности",
   description:
     "Политика конфиденциальности сайта Save-Tube.ru. Основные положения можете прочитать в данной статье. Пишите в поддержку если будут вопросы.",
-  alternates: { canonical: "/privacy-policy/" },
+  alternates: { canonical: "/privacy-policy" },
 };
 
 export default function PrivacyPolicyPage() {

@@ -4,7 +4,7 @@ export const metadata: Metadata = {
   title: "Пользовательское соглашение",
   description:
     "Пользовательское соглашение сайта Save-Tube.ru. Мы описали основные положения работы с сайтом. Если у вас будут вопросы, пишите в поддержку!",
-  alternates: { canonical: "/agreement/" },
+  alternates: { canonical: "/agreement" },
 };
 
 export default function AgreementPage() {

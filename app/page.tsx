@@ -21,26 +21,26 @@ export default function HomePage() {
         <h1 className="mx-auto max-w-3xl text-3xl font-bold sm:text-4xl">
           Скачать видео с RuTube бесплатно и без программ
         </h1>
-        <p className="mx-auto mt-4 max-w-2xl text-zinc-600">
+        <p className="mx-auto mt-4 max-w-2xl text-zinc-600 dark:text-zinc-400">
           Вставьте ссылку на видео в указанное поле и нажмите «Конвертировать». Система предложит
           доступные форматы, после чего вы сможете загрузить файл на своё устройство.
         </p>
         <div className="mx-auto mt-8 max-w-2xl">
           <DownloadForm />
         </div>
-        <p className="mt-4 text-sm text-zinc-500">
+        <p className="mt-4 text-sm text-zinc-500 dark:text-zinc-400">
           Скачивая видео, вы соглашаетесь с{" "}
-          <Link href="/agreement/" className="text-sky-700 underline hover:text-sky-800">
+          <Link href="/agreement" className="text-sky-700 dark:text-sky-400 underline hover:text-sky-800 dark:hover:text-sky-300">
             условиями использования сайта
           </Link>
         </p>
         <FormTabs active="main" />
       </section>
 
-      <div className="mb-10 rounded-xl bg-slate-100 p-6 sm:p-10">
+      <div className="mb-10 rounded-xl bg-slate-100 dark:bg-zinc-900 p-6 sm:p-10">
         <section>
           <h2 className="text-2xl font-bold">О сервисе</h2>
-          <div className="mt-4 space-y-4 text-zinc-600">
+          <div className="mt-4 space-y-4 text-zinc-600 dark:text-zinc-400">
             <p>
               Многие пользователи RuTube задаются вопросом: как скачать видео с RuTube? Это
               неудивительно, ведь доступ к интернету есть не всегда, а иногда хочется сохранить
@@ -57,16 +57,16 @@ export default function HomePage() {
 
         <section className="mt-10">
           <h2 className="text-2xl font-bold">Совместимость</h2>
-          <p className="mt-4 text-zinc-600">
+          <p className="mt-4 text-zinc-600 dark:text-zinc-400">
             Сервис save-tube.ru совместим со всеми популярными устройствами и операционными
             системами. Вы можете скачать видео с RuTube на:
           </p>
-          <ul className="mt-3 list-disc space-y-1 pl-6 text-zinc-600">
+          <ul className="mt-3 list-disc space-y-1 pl-6 text-zinc-600 dark:text-zinc-400">
             <li>Настольный компьютер или ноутбук (Windows, macOS, Linux);</li>
             <li>Смартфон или планшет (Android, iOS);</li>
             <li>Даже на смарт-телевизор.</li>
           </ul>
-          <p className="mt-4 text-zinc-600">
+          <p className="mt-4 text-zinc-600 dark:text-zinc-400">
             Единственное, что требуется для работы — наличие веб-браузера. Видео сохраняются в
             наиболее популярных форматах, таких как MP4 и MP3, и могут быть воспроизведены на любом
             устройстве без необходимости установки дополнительных кодеков.
@@ -75,7 +75,7 @@ export default function HomePage() {
 
         <section className="mt-10">
           <h2 className="text-2xl font-bold">Преимущества</h2>
-          <ul className="mt-4 list-disc space-y-2 pl-6 text-zinc-600">
+          <ul className="mt-4 list-disc space-y-2 pl-6 text-zinc-600 dark:text-zinc-400">
             <li>Можете скачивать видео в разном качестве: HD, FullHD, 2K, 4K;</li>
             <li>Поддержка всех популярных браузеров;</li>
             <li>Совместимость с любыми устройствами, включая старые модели;</li>
@@ -83,9 +83,9 @@ export default function HomePage() {
             <li>Простота использования без установки программ;</li>
             <li>Быстрая загрузка без ограничения по длине роликов.</li>
           </ul>
-          <p className="mt-6 text-zinc-600">
+          <p className="mt-6 text-zinc-600 dark:text-zinc-400">
             Полная инструкция доступна по{" "}
-            <Link href="/manual/" className="font-medium text-sky-700 underline hover:text-sky-800">
+            <Link href="/manual" className="font-medium text-sky-700 dark:text-sky-400 underline hover:text-sky-800 dark:hover:text-sky-300">
               данной ссылке
             </Link>
             .

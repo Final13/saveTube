@@ -97,11 +97,11 @@ export default function PaymentsPanel() {
 
   return (
     <div className="mt-8">
-      <h2 className="text-xl font-bold text-slate-900">Оплата</h2>
+      <h2 className="text-xl font-bold text-slate-900 dark:text-zinc-100">Оплата</h2>
 
       <div className="mt-3 flex flex-wrap items-center gap-3">
-        <span className="text-sm text-slate-500">Провайдер для новых платежей:</span>
-        <div className="flex rounded-lg border border-slate-200 bg-white p-1">
+        <span className="text-sm text-slate-500 dark:text-zinc-400">Провайдер для новых платежей:</span>
+        <div className="flex rounded-lg border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-1">
           {PROVIDERS.map((p) => (
             <button
               key={p.key}
@@ -110,7 +110,7 @@ export default function PaymentsPanel() {
               className={`rounded-md px-3 py-1.5 text-sm ${
                 data?.provider === p.key
                   ? "bg-sky-600 font-semibold text-white"
-                  : "text-slate-600 hover:bg-slate-100"
+                  : "text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-800"
               }`}
             >
               {p.label} <span className="text-xs opacity-75">({p.hint})</span>
@@ -122,13 +122,13 @@ export default function PaymentsPanel() {
         </span>
       </div>
 
-      {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
-      {!data && !error && <p className="mt-4 text-sm text-slate-500">Загрузка…</p>}
+      {error && <p className="mt-3 text-sm text-red-600 dark:text-red-400">{error}</p>}
+      {!data && !error && <p className="mt-4 text-sm text-slate-500 dark:text-zinc-400">Загрузка…</p>}
 
       {data && (
         <>
-          <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-            <h3 className="text-sm font-semibold text-slate-700">
+          <div className="mt-4 rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-4 shadow-sm">
+            <h3 className="text-sm font-semibold text-slate-700 dark:text-zinc-200">
               Автопродления ЮKassa ({data.recurrent.filter((r) => r.active).length})
             </h3>
             <table className="mt-2 w-full text-sm">
@@ -142,12 +142,12 @@ export default function PaymentsPanel() {
               </thead>
               <tbody>
                 {data.recurrent.map((r) => (
-                  <tr key={r.id} className="border-t border-slate-100 text-slate-700">
+                  <tr key={r.id} className="border-t border-slate-100 dark:border-zinc-800 text-slate-700 dark:text-zinc-200">
                     <td className="py-1.5 pr-4">{r.email}</td>
                     <td className="py-1.5 pr-4">{rateTitle(r.rate_index)}</td>
                     <td className="py-1.5 pr-4">{formatDate(r.next_billing_at)}</td>
                     <td
-                      className={`py-1.5 ${r.active ? "text-emerald-600" : "text-slate-400"}`}
+                      className={`py-1.5 ${r.active ? "text-emerald-600 dark:text-emerald-400" : "text-slate-400"}`}
                     >
                       {r.active ? "активно" : "выключено"}
                     </td>
@@ -164,8 +164,8 @@ export default function PaymentsPanel() {
             </table>
           </div>
 
-          <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-            <h3 className="text-sm font-semibold text-slate-700">Последние платежи</h3>
+          <div className="mt-4 rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-4 shadow-sm">
+            <h3 className="text-sm font-semibold text-slate-700 dark:text-zinc-200">Последние платежи</h3>
             <table className="mt-2 w-full text-sm">
               <thead>
                 <tr className="text-left text-xs text-slate-400">
@@ -179,7 +179,7 @@ export default function PaymentsPanel() {
               </thead>
               <tbody>
                 {data.payments.map((p) => (
-                  <tr key={p.id} className="border-t border-slate-100 text-slate-700">
+                  <tr key={p.id} className="border-t border-slate-100 dark:border-zinc-800 text-slate-700 dark:text-zinc-200">
                     <td className="py-1.5 pr-4 font-mono text-xs">{p.id}</td>
                     <td className="py-1.5 pr-4">{p.email}</td>
                     <td className="py-1.5 pr-4">{p.amount} ₽</td>
@@ -187,7 +187,7 @@ export default function PaymentsPanel() {
                       {p.provider === "yookassa" ? "ЮKassa" : p.provider === "tbank" ? "T-Bank" : "—"}
                     </td>
                     <td
-                      className={`py-1.5 pr-4 ${p.status === 1 ? "text-emerald-600" : "text-amber-600"}`}
+                      className={`py-1.5 pr-4 ${p.status === 1 ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400"}`}
                     >
                       {p.status === 1 ? "оплачен" : "ожидает"}
                     </td>

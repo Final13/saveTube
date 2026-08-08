@@ -1,5 +1,7 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme inline {
   --font-sans: var(--font-montserrat), ui-sans-serif, system-ui, sans-serif;
 }
@@ -7,6 +9,28 @@
 body {
   background: var(--color-zinc-50);
   color: var(--color-zinc-900);
+}
+
+.dark {
+  color-scheme: dark;
+}
+
+.dark body {
+  background: var(--color-zinc-950);
+  color: var(--color-zinc-100);
+}
+
+/* Курсор-рука на всех интерактивных элементах (Tailwind v4 не ставит pointer
+   на button по умолчанию). Неактивные — «запрещено». */
+button:not(:disabled),
+[role="button"]:not(:disabled),
+[role="switch"],
+select:not(:disabled) {
+  cursor: pointer;
+}
+button:disabled,
+[role="button"][aria-disabled="true"] {
+  cursor: not-allowed;
 }
 
 /* Текстовые страницы (политика, соглашение) */
@@ -39,4 +63,13 @@ body {
 }
 .prose-savetube li {
   margin-bottom: 0.25rem;
+}
+
+/* Тёмная тема текстовых страниц */
+.dark .prose-savetube {
+  color: var(--color-zinc-400);
+}
+.dark .prose-savetube h1,
+.dark .prose-savetube h2 {
+  color: var(--color-zinc-100);
 }

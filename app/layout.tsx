@@ -1,8 +1,11 @@
 import type { Metadata } from "next";
 import { Montserrat } from "next/font/google";
+import { cookies } from "next/headers";
 import Header from "@/components/header";
 import Footer from "@/components/footer";
 import Metrika from "@/components/metrika";
+import { ThemeProvider } from "@/lib/theme";
+import { getSession } from "@/lib/auth/session";
 import { SITE_DESCRIPTION, SITE_NAME, SITE_URL } from "@/lib/site";
 import "./globals.css";
 
@@ -37,17 +40,51 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const cookieStore = await cookies();
+  const themeCookie = cookieStore.get("theme")?.value;
+
+  // Валидируем куку: допустимы только light/dark/system
+  const validTheme: "light" | "dark" | "system" | null =
+    themeCookie === "light" || themeCookie === "dark" || themeCookie === "system"
+      ? themeCookie
+      : null;
+
+  // Для SSR класса на <html>: только light/dark (system разрешается клиентским скриптом)
+  const serverTheme = validTheme === "light" || validTheme === "dark" ? validTheme : "";
+
+  // Для SSR иконки темы: передаём resolved значение только если кука явно light/dark.
+  // Если куки нет или system — оставляем undefined, чтобы клиент сам определил prefers-color-scheme.
+  const serverResolvedTheme: "light" | "dark" | undefined =
+    validTheme === "dark" ? "dark" : validTheme === "light" ? "light" : undefined;
+
+  // SSR-статус входа: шапка сразу рендерит «Кабинет» для залогиненных,
+  // без мигания «Войти»→«Кабинет» после загрузки
+  const session = await getSession();
+  const loggedIn = Boolean(session.userId);
+
   return (
-    <html lang="ru" className={`${montserrat.variable} h-full antialiased`}>
+    <html
+      lang="ru"
+      className={`${montserrat.variable} h-full antialiased ${serverTheme}`.trim()}
+      suppressHydrationWarning
+    >
+      {/* Инлайн-скрипт против FOUC: ставит класс dark/light на <html> до рендера body */}
+      <script
+        dangerouslySetInnerHTML={{
+          __html: `(function(){try{var m=document.cookie.match(new RegExp("(^| )theme=([^;]+)"));var s=m?decodeURIComponent(m[2]):null;var r;if(!s||s==="system"){r=window.matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light"}else{r=s}var h=document.documentElement;h.classList.remove("light","dark");h.classList.add(r)}catch(e){}})();`,
+        }}
+      />
       <body className="flex min-h-full flex-col font-sans">
-        <Header />
-        <main className="mx-auto w-full max-w-5xl flex-1 px-4">{children}</main>
-        <Footer />
+        <ThemeProvider defaultResolvedTheme={serverResolvedTheme}>
+          <Header initialLoggedIn={loggedIn} initialTheme={serverResolvedTheme} />
+          <main className="mx-auto w-full max-w-5xl flex-1 px-4">{children}</main>
+          <Footer />
+        </ThemeProvider>
         <Metrika />
       </body>
     </html>

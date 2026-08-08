@@ -145,19 +145,19 @@ export default function PremiumModal({
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
       onClick={(e) => e.target === e.currentTarget && close()}
     >
-      <div className="w-full max-w-md space-y-4 rounded-xl bg-white p-6 shadow-xl">
+      <div className="w-full max-w-md space-y-4 rounded-xl bg-white p-6 shadow-xl dark:bg-zinc-900">
         <div className="flex items-start justify-between">
           <p className="flex items-center gap-2 text-lg font-semibold">
             <Zap className="size-5 text-amber-500" /> Ускорить загрузку
           </p>
           <button onClick={close} aria-label="Закрыть">
-            <X className="size-5 text-zinc-400 transition hover:text-zinc-700" />
+            <X className="size-5 text-zinc-400 dark:text-zinc-500 transition hover:text-zinc-700" />
           </button>
         </div>
 
         {screen === "default" && (
           <>
-            <p className="text-sm text-zinc-600">
+            <p className="text-sm text-zinc-600 dark:text-zinc-400">
               По-умолчанию скачивание видео происходит в 2-ух потоках, подписка позволит указать
               любое количество потоков!
             </p>
@@ -169,12 +169,12 @@ export default function PremiumModal({
                   onClick={() => setRateIndex(i)}
                   className={`rounded-lg border p-3 text-center transition ${
                     rateIndex === i
-                      ? "border-sky-600 bg-sky-50 ring-1 ring-sky-600"
-                      : "border-zinc-200 hover:border-zinc-400"
+                      ? "border-sky-600 bg-sky-50 ring-1 ring-sky-600 dark:border-sky-500 dark:bg-sky-950 dark:ring-sky-500"
+                      : "border-zinc-200 hover:border-zinc-400 dark:border-zinc-700 dark:hover:border-zinc-500"
                   }`}
                 >
                   <p className="text-sm font-semibold">{rate.title}</p>
-                  <p className="text-sm text-zinc-500">{rate.priceRub} рублей</p>
+                  <p className="text-sm text-zinc-500 dark:text-zinc-400">{rate.priceRub} рублей</p>
                 </button>
               ))}
             </div>
@@ -186,9 +186,9 @@ export default function PremiumModal({
                 setError(null);
               }}
               placeholder="Ваш E-Mail"
-              className="h-11 w-full rounded-lg border border-zinc-300 px-4 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-200"
+              className="h-11 w-full rounded-lg border border-zinc-300 px-4 outline-none dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100 transition focus:border-sky-500 focus:ring-2 focus:ring-sky-200 dark:focus:ring-sky-800"
             />
-            {error && <p className="text-sm text-red-600">{error}</p>}
+            {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
             <button
               onClick={handlePay}
               disabled={rateIndex === null || loading}
@@ -202,7 +202,7 @@ export default function PremiumModal({
                 setError(null);
                 setScreen("confirm");
               }}
-              className="w-full text-center text-sm text-sky-700 underline hover:text-sky-800"
+              className="w-full text-center text-sm text-sky-700 dark:text-sky-400 underline hover:text-sky-800 dark:hover:text-sky-300"
             >
               Я уже купил подписку
             </button>
@@ -213,7 +213,7 @@ export default function PremiumModal({
           <div className="space-y-3 text-center">
             <Loader2 className="mx-auto size-8 animate-spin text-sky-600" />
             <p className="font-semibold">Ожидаю оплату</p>
-            <p className="text-sm text-zinc-600">
+            <p className="text-sm text-zinc-600 dark:text-zinc-400">
               Статус оплаты проверяется каждые 5 секунд на протяжении 2-ух минут, просто подождите,
               не закрывайте окно
             </p>
@@ -222,8 +222,8 @@ export default function PremiumModal({
 
         {screen === "success" && (
           <div className="space-y-3">
-            <p className="font-semibold text-green-700">Оплата прошла успешно!</p>
-            <p className="text-sm text-zinc-600">
+            <p className="font-semibold text-green-700 dark:text-green-400">Оплата прошла успешно!</p>
+            <p className="text-sm text-zinc-600 dark:text-zinc-400">
               Теперь Вы можете управлять потоками загрузки. Можете закрыть окно.
             </p>
           </div>
@@ -231,8 +231,8 @@ export default function PremiumModal({
 
         {screen === "error" && (
           <div className="space-y-3">
-            <p className="font-semibold text-red-600">Оплата не прошла</p>
-            <p className="text-sm text-zinc-600">
+            <p className="font-semibold text-red-600 dark:text-red-400">Оплата не прошла</p>
+            <p className="text-sm text-zinc-600 dark:text-zinc-400">
               Оплата не прошла, попробуйте позже, либо если оплата все же прошла, нажмите «Я уже
               купил подписку» и проверьте свой E-Mail.
             </p>
@@ -241,7 +241,7 @@ export default function PremiumModal({
                 setError(null);
                 setScreen("confirm");
               }}
-              className="w-full text-center text-sm text-sky-700 underline hover:text-sky-800"
+              className="w-full text-center text-sm text-sky-700 dark:text-sky-400 underline hover:text-sky-800 dark:hover:text-sky-300"
             >
               Я уже купил подписку
             </button>
@@ -250,7 +250,7 @@ export default function PremiumModal({
 
         {screen === "confirm" && (
           <>
-            <p className="text-sm text-zinc-600">
+            <p className="text-sm text-zinc-600 dark:text-zinc-400">
               Укажите E-Mail который вы указывали при оплате, и нажмите «Проверить»
             </p>
             <input
@@ -261,9 +261,9 @@ export default function PremiumModal({
                 setError(null);
               }}
               placeholder="Ваш E-Mail"
-              className="h-11 w-full rounded-lg border border-zinc-300 px-4 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-200"
+              className="h-11 w-full rounded-lg border border-zinc-300 px-4 outline-none dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100 transition focus:border-sky-500 focus:ring-2 focus:ring-sky-200 dark:focus:ring-sky-800"
             />
-            {error && <p className="text-sm text-red-600">{error}</p>}
+            {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
             <button
               onClick={handleCheck}
               disabled={!checkEmail.trim() || loading}
@@ -277,7 +277,7 @@ export default function PremiumModal({
                 setError(null);
                 setScreen("default");
               }}
-              className="w-full text-center text-sm text-zinc-500 underline hover:text-zinc-700"
+              className="w-full text-center text-sm text-zinc-500 underline hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-300"
             >
               Назад к тарифам
             </button>
@@ -286,8 +286,8 @@ export default function PremiumModal({
 
         {screen === "confirm-success" && (
           <div className="space-y-3">
-            <p className="font-semibold text-green-700">Подписка активирована!</p>
-            <p className="text-sm text-zinc-600">
+            <p className="font-semibold text-green-700 dark:text-green-400">Подписка активирована!</p>
+            <p className="text-sm text-zinc-600 dark:text-zinc-400">
               Теперь Вы можете управлять потоками загрузки. Можете закрыть окно.
             </p>
           </div>
