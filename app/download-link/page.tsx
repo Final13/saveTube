@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import DownloadForm from "@/components/download-form";
+import FormTabs from "@/components/form-tabs";
 
 export const metadata: Metadata = {
   title: "Скачать видео с RuTube по ссылке",
@@ -34,6 +35,7 @@ export default function DownloadLinkPage() {
             условиями использования сайта
           </Link>
         </p>
+        <FormTabs active="link" />
       </section>
 
       <section className="mb-10 rounded-xl bg-slate-100 p-6 sm:p-10">

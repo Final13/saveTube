@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import DownloadForm from "@/components/download-form";
+import FormTabs from "@/components/form-tabs";
 import { SITE_DESCRIPTION } from "@/lib/site";
 
 export const metadata: Metadata = {
@@ -33,6 +34,7 @@ export default function HomePage() {
             условиями использования сайта
           </Link>
         </p>
+        <FormTabs active="main" />
       </section>
 
       <div className="mb-10 rounded-xl bg-slate-100 p-6 sm:p-10">

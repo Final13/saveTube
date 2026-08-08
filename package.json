@@ -9,7 +9,7 @@
     "lint": "eslint"
   },
   "dependencies": {
-    "bcryptjs": "^3.0.3",
+    "ioredis": "^6.0.0",
     "iron-session": "^8.0.4",
     "lucide-react": "^1.28.0",
     "next": "16.2.12",
@@ -17,11 +17,11 @@
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "serverless-mysql": "^2.1.0",
+    "ssh2": "^1.17.0",
     "undici": "^8.10.0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
-    "@types/bcryptjs": "^2.4.6",
     "@types/node": "^20",
     "@types/nodemailer": "^8.0.1",
     "@types/react": "^19",

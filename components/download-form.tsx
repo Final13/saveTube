@@ -27,7 +27,8 @@ interface VideoInfo {
 
 const MIN_THREADS = 2;
 const MAX_THREADS = 16;
-const MAX_RETRIES = 3;
+// Попыток на сегмент: покрывает ротацию из 3 внешних нод + встроенный прокси (fallback)
+const MAX_RETRIES = 4;
 
 type PremiumScreen = "default" | "success" | "error";
 

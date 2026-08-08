@@ -2,7 +2,8 @@ import { cookies } from "next/headers";
 import { getIronSession, type IronSession } from "iron-session";
 
 // Сессия ЛК: iron-session, подписанная cookie `savetube_session` на год.
-// Модель как в canvaskit — регистрация только авто при оплате, вход по email+пароль.
+// Паролей нет: вход по одноразовому коду из письма (OTP в Redis),
+// аккаунт также создаётся автоматически при первой оплате.
 export interface SessionData {
   userId?: string;
   email?: string;

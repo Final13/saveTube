@@ -3,7 +3,8 @@ import { ProxyAgent, fetch as undiciFetch } from "undici";
 // Ядро логики скачивания с RuTube.
 // Все эндпоинты проверены на живом видео (см. AGENTS.md):
 //   метаданные  — https://rutube.ru/api/video/{id}/
-//   плейлисты   — https://rutube.ru/api/play/options/{id}/?pver=v2 -> video_balancer.default (master m3u8)
+//   плейлисты   — https://rutube.ru/api/play/options/{id}/?no_404=true&referer&pver=v2&client=wdp&mq=all&av1=1
+//                 (без mq=all&av1=1 master урезан до 1080p; так было в старом бэке) -> video_balancer.default
 //   сегменты    — media m3u8 содержит ОТНОСИТЕЛЬНЫЕ пути *.ts
 // CDN RuTube НЕ отдаёт Access-Control-Allow-Origin, поэтому сегменты качаются через app/api/proxy.
 //
@@ -157,7 +158,11 @@ async function fetchJson(url: string): Promise<any> {
 export async function getVideoInfo(videoId: string): Promise<VideoInfo> {
   const [videoData, playOptions] = await Promise.all([
     fetchJson(`https://rutube.ru/api/video/${videoId}/`),
-    fetchJson(`https://rutube.ru/api/play/options/${videoId}/?pver=v2`),
+    // Параметры как в старом бэке: без mq=all&av1=1 API отдаёт master-плейлист
+    // урезанным (максимум 1080p), с ними — полный (1440p/2160p 4K)
+    fetchJson(
+      `https://rutube.ru/api/play/options/${videoId}/?no_404=true&referer&pver=v2&client=wdp&mq=all&av1=1`,
+    ),
   ]);
 
   const masterUrl: string | undefined = playOptions?.video_balancer?.default;

@@ -1,9 +1,9 @@
 import nodemailer from "nodemailer";
 import { SITE_URL, SUPPORT_EMAIL } from "@/lib/site";
 
-// SMTP-письма (nodemailer): welcome с паролем при авто-регистрации, reset,
-// payment-success после оплаты подписки. Без SMTP_* письма тихо пропускаются —
-// оплата/логин от почты не зависят.
+// SMTP-письма (nodemailer): welcome при авто-регистрации, одноразовый код
+// для входа (OTP), payment-success после оплаты подписки.
+// Без SMTP_* письма тихо пропускаются — оплата/логин от почты не зависят.
 
 function getTransporter() {
   const host = process.env.SMTP_HOST;
@@ -39,8 +39,8 @@ function getFrom(): string {
   return process.env.SMTP_FROM ?? process.env.SMTP_USER ?? "noreply@example.com";
 }
 
-/** Письмо с паролем после авто-регистрации при первой оплате. */
-export async function sendWelcomeEmail(data: { to: string; password: string }) {
+/** Письмо после авто-регистрации при первой оплате (сессия уже стоит). */
+export async function sendWelcomeEmail(data: { to: string }) {
   const transporter = getTransporter();
   if (!transporter) {
     console.warn("SMTP is not configured, welcome email not sent");
@@ -50,14 +50,12 @@ export async function sendWelcomeEmail(data: { to: string; password: string }) {
   await transporter.sendMail({
     from: getFrom(),
     to: data.to,
-    subject: "Добро пожаловать! Данные для входа в личный кабинет",
+    subject: "Добро пожаловать! Ваш личный кабинет создан",
     html: `<div style="max-width:480px;margin:0 auto;font-family:Arial,sans-serif;color:#333;text-align:center">
       <p style="font-size:24px;margin:24px 0">Привет 👋</p>
-      <p style="font-size:16px;line-height:1.6;margin:0 0 16px">Спасибо за оплату подписки Save-Tube! Мы создали для вас личный кабинет.</p>
-      <p style="font-size:16px;line-height:1.6;margin:0 0 8px"><strong>Ваш логин:</strong> ${escapeHtml(data.to)}</p>
-      <p style="font-size:16px;line-height:1.6;margin:0 0 24px"><strong>Ваш пароль:</strong> ${escapeHtml(data.password)}</p>
-      <p style="font-size:16px;line-height:1.6;margin:0 0 24px">Сохраните это письмо. В личном кабинете можно посмотреть статус подписки, историю платежей и управлять автопродлением.</p>
-      <a href="${SITE_URL}/account" style="display:inline-block;background:#0284c7;color:#fff;text-decoration:none;padding:14px 32px;border-radius:9999px;font-weight:600">Войти в личный кабинет</a>
+      <p style="font-size:16px;line-height:1.6;margin:0 0 16px">Спасибо за оплату подписки Save-Tube! Мы создали для вас личный кабинет — вы уже вошли в него на этом устройстве.</p>
+      <p style="font-size:16px;line-height:1.6;margin:0 0 24px">В личном кабинете можно посмотреть статус подписки, историю платежей и управлять автопродлением. Вход на других устройствах — по одноразовому коду из письма.</p>
+      <a href="${SITE_URL}/account" style="display:inline-block;background:#0284c7;color:#fff;text-decoration:none;padding:14px 32px;border-radius:9999px;font-weight:600">Открыть личный кабинет</a>
       <p style="font-size:14px;color:#666;margin-top:24px">Вопросы? Напишите нам: ${escapeHtml(SUPPORT_EMAIL)}</p>
     </div>`,
   });
@@ -65,25 +63,23 @@ export async function sendWelcomeEmail(data: { to: string; password: string }) {
   return true;
 }
 
-/** Письмо с новым паролем (восстановление). */
-export async function sendPasswordResetEmail(data: { to: string; password: string }) {
+/** Письмо с одноразовым кодом для входа в личный кабинет. */
+export async function sendOtpEmail(data: { to: string; code: string }) {
   const transporter = getTransporter();
   if (!transporter) {
-    console.warn("SMTP is not configured, password reset email not sent");
+    console.warn("SMTP is not configured, OTP email not sent");
     return false;
   }
 
   await transporter.sendMail({
     from: getFrom(),
     to: data.to,
-    subject: "Восстановление пароля — новые данные для входа",
+    subject: `Код для входа: ${data.code}`,
     html: `<div style="max-width:480px;margin:0 auto;font-family:Arial,sans-serif;color:#333;text-align:center">
-      <p style="font-size:24px;margin:24px 0">Восстановление пароля</p>
-      <p style="font-size:16px;line-height:1.6;margin:0 0 16px">Мы получили запрос на восстановление пароля от вашего аккаунта Save-Tube.</p>
-      <p style="font-size:16px;line-height:1.6;margin:0 0 8px"><strong>Ваш логин:</strong> ${escapeHtml(data.to)}</p>
-      <p style="font-size:16px;line-height:1.6;margin:0 0 24px"><strong>Новый пароль:</strong> ${escapeHtml(data.password)}</p>
-      <a href="${SITE_URL}/account" style="display:inline-block;background:#0284c7;color:#fff;text-decoration:none;padding:14px 32px;border-radius:9999px;font-weight:600">Войти в личный кабинет</a>
-      <p style="font-size:14px;color:#666;margin-top:24px">Если вы не запрашивали восстановление пароля, просто проигнорируйте это письмо — новые данные видите только вы.</p>
+      <p style="font-size:24px;margin:24px 0">Код для входа</p>
+      <p style="font-size:40px;font-weight:700;letter-spacing:8px;margin:0 0 16px">${escapeHtml(data.code)}</p>
+      <p style="font-size:16px;line-height:1.6;margin:0 0 24px">Введите этот код на странице входа Save-Tube. Код действует 5 минут.</p>
+      <p style="font-size:14px;color:#666;margin-top:24px">Если вы не запрашивали код, просто проигнорируйте это письмо.</p>
     </div>`,
   });
 

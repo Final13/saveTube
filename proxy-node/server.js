@@ -7,7 +7,8 @@
 // Env:
 //   PROXY_TOKEN_SECRET — ОБЯЗАТЕЛЕН, тот же что у основного приложения (иначе все запросы 403)
 //   PORT               — порт (по умолчанию 3100)
-//   PROXY_NODE_ORIGIN  — Origin фронта для CORS (по умолчанию https://save-tube.ru, "*" — любой)
+//   PROXY_NODE_ORIGIN  — допустимые Origin фронта для CORS, через запятую
+//                        (по умолчанию https://save-tube.ru; "*" — любой)
 
 import { createHmac, timingSafeEqual } from "node:crypto";
 import http from "node:http";
@@ -15,7 +16,10 @@ import https from "node:https";
 
 const SECRET = process.env.PROXY_TOKEN_SECRET ?? "";
 const PORT = Number(process.env.PORT ?? 3100);
-const ORIGIN = process.env.PROXY_NODE_ORIGIN ?? "https://save-tube.ru";
+const ORIGINS = (process.env.PROXY_NODE_ORIGIN ?? "https://save-tube.ru")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
 
 // Лимит = MAX_THREADS на клиенте (подписка до 16 потоков)
 const MAX_CONCURRENT_PER_IP = 16;
@@ -80,13 +84,21 @@ function getClientIp(req) {
   return req.socket.remoteAddress ?? "unknown";
 }
 
-function setCors(res) {
-  res.setHeader("Access-Control-Allow-Origin", ORIGIN);
+function setCors(req, res) {
+  const reqOrigin = req.headers.origin;
+  let allow = null;
+  if (ORIGINS.includes("*")) allow = "*";
+  else if (reqOrigin && ORIGINS.includes(reqOrigin)) allow = reqOrigin;
+  else if (!reqOrigin) allow = ORIGINS[0]; // небраузерные клиенты (curl/health)
+  if (allow) {
+    res.setHeader("Access-Control-Allow-Origin", allow);
+    res.setHeader("Vary", "Origin");
+  }
   res.setHeader("Access-Control-Expose-Headers", "Content-Length, Content-Range, Accept-Ranges");
 }
 
-function respondJson(res, status, message) {
-  setCors(res);
+function respondJson(req, res, status, message) {
+  setCors(req, res);
   res.writeHead(status, { "Content-Type": "application/json" });
   res.end(JSON.stringify({ message }));
 }
@@ -96,7 +108,7 @@ const server = http.createServer((req, res) => {
 
   // Preflight
   if (req.method === "OPTIONS") {
-    setCors(res);
+    setCors(req, res);
     res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
     res.setHeader("Access-Control-Allow-Headers", "Content-Type");
     res.setHeader("Access-Control-Max-Age", "86400");
@@ -107,29 +119,33 @@ const server = http.createServer((req, res) => {
 
   // Health-check (для мониторинга/балансировщика)
   if (url.pathname === "/health") {
-    respondJson(res, 200, "ok");
+    respondJson(req, res, 200, "ok");
     return;
   }
 
-  if (url.pathname !== "/" || req.method !== "GET") {
-    respondJson(res, 404, "Not found.");
+  // Пути: "/" — чистая установка, "/api/v1/proxy" и "/api/proxy" — совместимость
+  // с существующими nginx-конфигами (старые серверы проксируют только эти пути —
+  // так ноду можно перезалить без правки nginx)
+  const isProxyPath = ["/", "/api/proxy", "/api/v1/proxy"].includes(url.pathname);
+  if (!isProxyPath || req.method !== "GET") {
+    respondJson(req, res, 404, "Not found.");
     return;
   }
 
   if (!verifyToken(url.searchParams.get("t"))) {
-    respondJson(res, 403, "Недействительный токен.");
+    respondJson(req, res, 403, "Недействительный токен.");
     return;
   }
 
   const target = url.searchParams.get("url") ?? "";
   if (!isAllowedCdnUrl(target)) {
-    respondJson(res, 400, "Недопустимый адрес.");
+    respondJson(req, res, 400, "Недопустимый адрес.");
     return;
   }
 
   const ip = getClientIp(req);
   if (!acquire(ip)) {
-    respondJson(res, 429, "Слишком много одновременных загрузок, попробуйте позже.");
+    respondJson(req, res, 429, "Слишком много одновременных загрузок, попробуйте позже.");
     return;
   }
 
@@ -149,6 +165,7 @@ const server = http.createServer((req, res) => {
       if (upstream.statusCode !== 200) {
         upstream.resume();
         respondJson(
+          req,
           res,
           upstream.statusCode === 404 ? 404 : 502,
           `Ошибка CDN (HTTP ${upstream.statusCode}).`,
@@ -156,7 +173,7 @@ const server = http.createServer((req, res) => {
         return;
       }
 
-      setCors(res);
+      setCors(req, res);
       const headers = {
         "Content-Type": upstream.headers["content-type"] ?? "video/mp2t",
         "Cache-Control": "private, max-age=3600",
@@ -177,7 +194,7 @@ const server = http.createServer((req, res) => {
 
   upstreamReq.on("timeout", () => upstreamReq.destroy(new Error("upstream timeout")));
   upstreamReq.on("error", () => {
-    if (!res.headersSent) respondJson(res, 502, "CDN недоступен, попробуйте позже.");
+    if (!res.headersSent) respondJson(req, res, 502, "CDN недоступен, попробуйте позже.");
     else res.destroy();
     releaseOnce();
   });
@@ -187,5 +204,5 @@ server.listen(PORT, () => {
   if (!SECRET) {
     console.warn("[proxy-node] ВНИМАНИЕ: PROXY_TOKEN_SECRET не задан — все запросы будут 403");
   }
-  console.log(`[proxy-node] listening on :${PORT}, origin: ${ORIGIN}`);
+  console.log(`[proxy-node] listening on :${PORT}, origins: ${ORIGINS.join(", ")}`);
 });

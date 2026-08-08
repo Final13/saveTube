@@ -40,16 +40,17 @@ function providerLabel(provider: string): string {
 }
 
 // Личный кабинет по сессии (iron-session cookie savetube_session).
-// Нет сессии — формы входа / восстановления пароля; есть сессия — статус подписки,
-// автопродление с отвязкой карты, история платежей, кнопка «Выйти».
-// Аккаунт создаётся автоматически при первой оплате, пароль приходит письмом.
+// Нет сессии — вход по одноразовому коду из письма (шаг 1: email → код на почту,
+// шаг 2: ввод кода); есть сессия — статус подписки, автопродление с отвязкой
+// карты, история платежей, кнопка «Выйти». Паролей нет: аккаунт создаётся
+// автоматически при первой оплате или при первом входе по коду.
 export default function AccountPanel() {
   const [authed, setAuthed] = useState<boolean | null>(null);
-  const [authMode, setAuthMode] = useState<"login" | "forgot">("login");
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [code, setCode] = useState("");
+  const [codeSent, setCodeSent] = useState(false);
+  const [codeExpired, setCodeExpired] = useState(false);
   const [authError, setAuthError] = useState("");
-  const [authNotice, setAuthNotice] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
 
   const [data, setData] = useState<AccountData | null>(null);
@@ -82,20 +83,21 @@ export default function AccountPanel() {
     setTimeout(() => void load(), 0);
   }, [load]);
 
-  async function handleLogin() {
+  async function handleRequestCode() {
     if (authLoading) return;
     setAuthLoading(true);
     setAuthError("");
+    setCodeExpired(false);
     try {
-      const res = await fetch("/api/auth/login", {
+      const res = await fetch("/api/auth/request-code", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.trim(), password }),
+        body: JSON.stringify({ email: email.trim() }),
       });
       const body = await res.json();
-      if (!res.ok) throw new Error(body.message || "Не удалось войти.");
-      setPassword("");
-      await load();
+      if (!res.ok) throw new Error(body.message || "Не удалось отправить код.");
+      setCode("");
+      setCodeSent(true);
     } catch (e) {
       setAuthError(e instanceof Error ? e.message : "Ошибка сети.");
     } finally {
@@ -103,21 +105,29 @@ export default function AccountPanel() {
     }
   }
 
-  async function handleForgot() {
+  async function handleVerifyCode() {
     if (authLoading) return;
     setAuthLoading(true);
     setAuthError("");
-    setAuthNotice("");
+    setCodeExpired(false);
     try {
-      const res = await fetch("/api/auth/forgot-password", {
+      const res = await fetch("/api/auth/verify-code", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.trim() }),
+        body: JSON.stringify({ email: email.trim(), code: code.trim() }),
       });
       const body = await res.json();
-      if (!res.ok) throw new Error(body.message || "Не удалось восстановить пароль.");
-      setAuthNotice("Если аккаунт с таким E-Mail существует, новый пароль отправлен на почту.");
-      setAuthMode("login");
+      if (!res.ok) {
+        if (body.expired) {
+          setCodeExpired(true);
+          setAuthError("Код недействителен или просрочен.");
+        } else {
+          throw new Error(body.message || "Не удалось войти.");
+        }
+        return;
+      }
+      setCode("");
+      await load();
     } catch (e) {
       setAuthError(e instanceof Error ? e.message : "Ошибка сети.");
     } finally {
@@ -133,7 +143,8 @@ export default function AccountPanel() {
     }
     setData(null);
     setAuthed(false);
-    setAuthMode("login");
+    setCodeSent(false);
+    setCodeExpired(false);
   }
 
   async function handleUnlink() {
@@ -166,69 +177,75 @@ export default function AccountPanel() {
     return (
       <div className="mt-4 max-w-md space-y-4">
         <p className="text-sm text-zinc-600">
-          Аккаунт создаётся автоматически при первой оплате подписки — пароль приходит на почту.
+          Вход — по одноразовому коду из письма, пароль не нужен. Если аккаунта ещё нет, он
+          создастся автоматически (так же, как при первой оплате подписки).
         </p>
         <div className="space-y-3 rounded-xl border border-zinc-200 bg-zinc-50 p-4">
           <input
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            placeholder="E-Mail, указанный при оплате"
-            className="h-12 w-full rounded-lg border border-zinc-300 bg-white px-4 text-zinc-900 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-200"
+            placeholder="E-Mail"
+            disabled={codeSent}
+            className="h-12 w-full rounded-lg border border-zinc-300 bg-white px-4 text-zinc-900 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-200 disabled:opacity-60"
           />
-          {authMode === "login" && (
+          {codeSent && (
             <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && password && EMAIL_REGEX.test(email.trim()) && void handleLogin()}
-              placeholder="Пароль из письма"
-              className="h-12 w-full rounded-lg border border-zinc-300 bg-white px-4 text-zinc-900 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-200"
+              type="text"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              maxLength={6}
+              value={code}
+              onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
+              onKeyDown={(e) => e.key === "Enter" && code.length === 6 && void handleVerifyCode()}
+              placeholder="Код из письма (6 цифр)"
+              className="h-12 w-full rounded-lg border border-zinc-300 bg-white px-4 text-center text-lg tracking-[0.5em] text-zinc-900 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-200"
             />
           )}
 
+          {codeSent && !codeExpired && (
+            <p className="text-sm text-zinc-600">
+              Код отправлен на {email.trim()}. Действует 5 минут.
+            </p>
+          )}
           {authError && <p className="text-sm text-red-600">{authError}</p>}
-          {authNotice && <p className="text-sm text-emerald-700">{authNotice}</p>}
 
-          {authMode === "login" ? (
+          {!codeSent ? (
+            <button
+              onClick={() => void handleRequestCode()}
+              disabled={authLoading || !EMAIL_REGEX.test(email.trim())}
+              className="flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-sky-600 px-6 font-semibold text-white transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {authLoading && <Loader2 className="size-5 animate-spin" />}
+              Получить код
+            </button>
+          ) : (
             <>
               <button
-                onClick={() => void handleLogin()}
-                disabled={authLoading || !password || !EMAIL_REGEX.test(email.trim())}
+                onClick={() => void handleVerifyCode()}
+                disabled={authLoading || code.length !== 6}
                 className="flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-sky-600 px-6 font-semibold text-white transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {authLoading && <Loader2 className="size-5 animate-spin" />}
                 Войти
               </button>
               <button
-                onClick={() => {
-                  setAuthMode("forgot");
-                  setAuthError("");
-                  setAuthNotice("");
-                }}
-                className="w-full text-center text-sm text-sky-700 transition hover:underline"
+                onClick={() => void handleRequestCode()}
+                disabled={authLoading}
+                className="w-full text-center text-sm text-sky-700 transition hover:underline disabled:opacity-60"
               >
-                Забыли пароль?
-              </button>
-            </>
-          ) : (
-            <>
-              <button
-                onClick={() => void handleForgot()}
-                disabled={authLoading || !EMAIL_REGEX.test(email.trim())}
-                className="flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-sky-600 px-6 font-semibold text-white transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {authLoading && <Loader2 className="size-5 animate-spin" />}
-                Отправить новый пароль
+                {codeExpired ? "Выслать код повторно" : "Не пришёл код? Отправить ещё раз"}
               </button>
               <button
                 onClick={() => {
-                  setAuthMode("login");
+                  setCodeSent(false);
+                  setCode("");
+                  setCodeExpired(false);
                   setAuthError("");
                 }}
-                className="w-full text-center text-sm text-sky-700 transition hover:underline"
+                className="w-full text-center text-sm text-zinc-500 transition hover:underline"
               >
-                Назад ко входу
+                Изменить E-Mail
               </button>
             </>
           )}

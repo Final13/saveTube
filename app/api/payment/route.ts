@@ -1,5 +1,4 @@
 import { after } from "next/server";
-import crypto from "crypto";
 import { getRate } from "@/lib/rates";
 import { createPayment, setMerchantId } from "@/lib/payments-store";
 import { initPayment } from "@/lib/tbank";
@@ -7,7 +6,6 @@ import { createRedirectPayment } from "@/lib/yookassa";
 import { getPaymentProvider } from "@/lib/settings-store";
 import { getClientIp, rateLimit } from "@/lib/rate-limit";
 import { trackRequest } from "@/lib/metrics";
-import { hashPassword } from "@/lib/auth/password";
 import { createUser, findUserByEmail } from "@/lib/auth/user-store";
 import { setSession } from "@/lib/auth/session";
 import { sendWelcomeEmail } from "@/lib/email";
@@ -43,31 +41,27 @@ async function handleGet(request: Request) {
     return Response.json({ message: "Некорректный тариф." }, { status: 400 });
   }
 
-  // Авто-регистрация: если юзера с таким email нет — создаём со случайным паролем,
-  // ставим сессию и шлём welcome-письмо с паролем после ответа (fire-and-forget).
-  // Если юзер уже есть — НЕ логиним (вход только по паролю). Ошибки БД/SMTP не
-  // должны ломать оплату.
-  let generatedPassword: string | null = null;
+  // Авто-регистрация: если юзера с таким email нет — создаём без пароля,
+  // ставим сессию и шлём welcome-письмо после ответа (fire-and-forget).
+  // Если юзер уже есть — НЕ логиним (вход только по коду из письма).
+  // Ошибки БД/SMTP не должны ломать оплату.
+  let registered = false;
   try {
     const existing = await findUserByEmail(email);
     if (!existing) {
-      generatedPassword = crypto.randomBytes(12).toString("hex");
-      const userId = await createUser({
-        email,
-        passwordHash: await hashPassword(generatedPassword),
-      });
+      const userId = await createUser({ email });
       await setSession({ id: userId, email: email.toLowerCase() });
+      registered = true;
     }
   } catch (error) {
-    generatedPassword = null;
+    registered = false;
     console.error("Auto-registration failed (payment continues):", error);
   }
 
-  if (generatedPassword) {
-    const password = generatedPassword;
+  if (registered) {
     after(async () => {
       try {
-        await sendWelcomeEmail({ to: email, password });
+        await sendWelcomeEmail({ to: email });
       } catch (error) {
         console.error("Failed to send welcome email:", error);
       }
