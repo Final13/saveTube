@@ -431,7 +431,7 @@ export default function DownloadForm({ premiumBlock = false }: { premiumBlock?: 
               setPremiumScreen("default");
               setPremiumOpen(true);
             }}
-            className="rounded-lg bg-amber-50 dark:bg-amber-9500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-amber-600"
+            className="rounded-lg bg-amber-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-amber-600 dark:bg-amber-600 dark:hover:bg-amber-500"
           >
             Выберите подписку
           </button>
