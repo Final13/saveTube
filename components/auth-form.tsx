@@ -94,7 +94,7 @@ export default function AuthForm({ onSuccess }: { onSuccess: () => void | Promis
             onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
             onKeyDown={(e) => e.key === "Enter" && code.length === 6 && void handleVerifyCode()}
             placeholder="Код из письма (6 цифр)"
-            className="h-12 w-full rounded-lg border border-zinc-300 bg-white px-4 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100 text-center text-lg tracking-[0.5em] text-zinc-900 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-200 dark:focus:ring-sky-800"
+            className="h-12 w-full rounded-lg border border-zinc-300 bg-white px-4 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100 text-center text-lg text-zinc-900 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-200 dark:focus:ring-sky-800"
           />
         )}
 
