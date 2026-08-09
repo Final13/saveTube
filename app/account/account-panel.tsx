@@ -2,9 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { CreditCard, Loader2, LogOut, Zap } from "lucide-react";
+import AuthForm from "@/components/auth-form";
 import { RATES } from "@/lib/rates";
-
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 interface AccountData {
   email: string;
@@ -46,13 +45,6 @@ function providerLabel(provider: string): string {
 // автоматически при первой оплате или при первом входе по коду.
 export default function AccountPanel() {
   const [authed, setAuthed] = useState<boolean | null>(null);
-  const [email, setEmail] = useState("");
-  const [code, setCode] = useState("");
-  const [codeSent, setCodeSent] = useState(false);
-  const [codeExpired, setCodeExpired] = useState(false);
-  const [authError, setAuthError] = useState("");
-  const [authLoading, setAuthLoading] = useState(false);
-
   const [data, setData] = useState<AccountData | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -83,58 +75,6 @@ export default function AccountPanel() {
     setTimeout(() => void load(), 0);
   }, [load]);
 
-  async function handleRequestCode() {
-    if (authLoading) return;
-    setAuthLoading(true);
-    setAuthError("");
-    setCodeExpired(false);
-    try {
-      const res = await fetch("/api/auth/request-code", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.trim() }),
-      });
-      const body = await res.json();
-      if (!res.ok) throw new Error(body.message || "Не удалось отправить код.");
-      setCode("");
-      setCodeSent(true);
-    } catch (e) {
-      setAuthError(e instanceof Error ? e.message : "Ошибка сети.");
-    } finally {
-      setAuthLoading(false);
-    }
-  }
-
-  async function handleVerifyCode() {
-    if (authLoading) return;
-    setAuthLoading(true);
-    setAuthError("");
-    setCodeExpired(false);
-    try {
-      const res = await fetch("/api/auth/verify-code", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.trim(), code: code.trim() }),
-      });
-      const body = await res.json();
-      if (!res.ok) {
-        if (body.expired) {
-          setCodeExpired(true);
-          setAuthError("Код недействителен или просрочен.");
-        } else {
-          throw new Error(body.message || "Не удалось войти.");
-        }
-        return;
-      }
-      setCode("");
-      await load();
-    } catch (e) {
-      setAuthError(e instanceof Error ? e.message : "Ошибка сети.");
-    } finally {
-      setAuthLoading(false);
-    }
-  }
-
   async function handleLogout() {
     try {
       await fetch("/api/auth/logout", { method: "POST" });
@@ -143,8 +83,6 @@ export default function AccountPanel() {
     }
     setData(null);
     setAuthed(false);
-    setCodeSent(false);
-    setCodeExpired(false);
   }
 
   async function handleUnlink() {
@@ -175,81 +113,8 @@ export default function AccountPanel() {
 
   if (!authed) {
     return (
-      <div className="mt-4 max-w-md space-y-4">
-        <p className="text-sm text-zinc-600 dark:text-zinc-400">
-          Вход — по одноразовому коду из письма, пароль не нужен. Если аккаунта ещё нет, он
-          создастся автоматически (так же, как при первой оплате подписки).
-        </p>
-        <div className="space-y-3 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900 p-4">
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="E-Mail"
-            disabled={codeSent}
-            className="h-12 w-full rounded-lg border border-zinc-300 bg-white px-4 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100 text-zinc-900 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-200 dark:focus:ring-sky-800 disabled:opacity-60"
-          />
-          {codeSent && (
-            <input
-              type="text"
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              maxLength={6}
-              value={code}
-              onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
-              onKeyDown={(e) => e.key === "Enter" && code.length === 6 && void handleVerifyCode()}
-              placeholder="Код из письма (6 цифр)"
-              className="h-12 w-full rounded-lg border border-zinc-300 bg-white px-4 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100 text-center text-lg tracking-[0.5em] text-zinc-900 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-200 dark:focus:ring-sky-800"
-            />
-          )}
-
-          {codeSent && !codeExpired && (
-            <p className="text-sm text-zinc-600 dark:text-zinc-400">
-              Код отправлен на {email.trim()}. Действует 5 минут.
-            </p>
-          )}
-          {authError && <p className="text-sm text-red-600 dark:text-red-400">{authError}</p>}
-
-          {!codeSent ? (
-            <button
-              onClick={() => void handleRequestCode()}
-              disabled={authLoading || !EMAIL_REGEX.test(email.trim())}
-              className="flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-sky-600 px-6 font-semibold text-white transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {authLoading && <Loader2 className="size-5 animate-spin" />}
-              Получить код
-            </button>
-          ) : (
-            <>
-              <button
-                onClick={() => void handleVerifyCode()}
-                disabled={authLoading || code.length !== 6}
-                className="flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-sky-600 px-6 font-semibold text-white transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {authLoading && <Loader2 className="size-5 animate-spin" />}
-                Войти
-              </button>
-              <button
-                onClick={() => void handleRequestCode()}
-                disabled={authLoading}
-                className="w-full text-center text-sm text-sky-700 dark:text-sky-400 transition hover:underline disabled:opacity-60"
-              >
-                {codeExpired ? "Выслать код повторно" : "Не пришёл код? Отправить ещё раз"}
-              </button>
-              <button
-                onClick={() => {
-                  setCodeSent(false);
-                  setCode("");
-                  setCodeExpired(false);
-                  setAuthError("");
-                }}
-                className="w-full text-center text-sm text-zinc-500 dark:text-zinc-400 transition hover:underline"
-              >
-                Изменить E-Mail
-              </button>
-            </>
-          )}
-        </div>
+      <div className="mt-4 max-w-md">
+        <AuthForm onSuccess={load} />
       </div>
     );
   }

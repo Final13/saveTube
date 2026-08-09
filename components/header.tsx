@@ -1,12 +1,14 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { User, Zap } from "lucide-react";
 import ThemeToggle from "@/components/theme-toggle";
+import AuthModal from "@/components/auth-modal";
 
-// Шапка: логотип + вход в ЛК. Не залогинен — «Войти» на /account,
-// залогинен — «Кабинет», с активной подпиской — значок «Премиум».
+// Шапка: логотип + вход в ЛК. Не залогинен — «Войти» открывает модалку входа,
+// залогинен — «Кабинет» на /account, с активной подпиской — значок «Премиум».
 // initialLoggedIn приходит с SSR (layout читает сессию) — без мигания «Войти»→«Кабинет»;
 // fetch ниже корректирует в обе стороны (logout в другой вкладке и т.п.).
 // Покупка подписки — через premium-modal («⚡ Ускорить» в форме скачивания).
@@ -17,8 +19,10 @@ export default function Header({
   initialLoggedIn?: boolean;
   initialTheme?: "light" | "dark";
 }) {
+  const router = useRouter();
   const [premium, setPremium] = useState(false);
   const [loggedIn, setLoggedIn] = useState(initialLoggedIn);
+  const [authOpen, setAuthOpen] = useState(false);
 
   useEffect(() => {
     fetch("/api/auth/me")
@@ -60,15 +64,23 @@ export default function Header({
               <User className="size-4" /> Кабинет
             </Link>
           ) : (
-            <Link
-              href="/account"
+            <button
+              onClick={() => setAuthOpen(true)}
               className="rounded-lg px-3 py-1.5 text-sm font-medium text-white transition hover:bg-slate-600"
             >
               Войти
-            </Link>
+            </button>
           )}
         </div>
       </div>
+      <AuthModal
+        open={authOpen}
+        onClose={() => setAuthOpen(false)}
+        onSuccess={() => {
+          setLoggedIn(true);
+          router.refresh();
+        }}
+      />
     </header>
   );
 }
