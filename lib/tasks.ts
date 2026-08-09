@@ -14,6 +14,10 @@ export interface Task<T = unknown> {
   data?: T;
   message?: string;
   created_at: number;
+  /** Входные данные задачи (например videoId) — нужны serverless-поллингу для догона */
+  payload?: unknown;
+  /** Задача прямо сейчас обрабатывается (single-flight для догона в GET) */
+  processing?: boolean;
 }
 
 const TASK_TTL_MS = 10 * 60 * 1000; // как в старом бэке (Redis setEx 600)
@@ -51,12 +55,13 @@ function store(): Map<string, Task> {
   return globalState.__savetubeTasks;
 }
 
-export function createTask(type: string, key?: string): Task {
+export function createTask(type: string, key?: string, payload?: unknown): Task {
   const task: Task = {
     task_id: randomUUID(),
     type,
     status: "pending",
     created_at: Date.now(),
+    payload,
   };
   store().set(task.task_id, task);
   if (key) keyIndex().set(`${type}:${key}`, task.task_id);

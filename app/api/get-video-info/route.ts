@@ -13,11 +13,20 @@ import { trackRequest } from "@/lib/metrics";
 // Обработка идёт через очередь с лимитом параллелизма (lib/task-queue.ts): под нагрузкой
 // задачи ждут FIFO, переполненная очередь отклоняет новые — нода не умирает.
 // Повторный POST того же видео получает уже созданную задачу (дедуп по videoId).
+//
+// Serverless (Vercel): фоновая обработка после ответа не живёт (функция замораживается),
+// поэтому POST отвечает 202 СРАЗУ (как в старом бэке), а выполнение драйвит сам
+// poll-GET: первый запрос статуса синхронно выполняет задачу (до ~50с, см. maxDuration
+// в vercel.json) и отвечает completed/pending. Если poll попал на инстанс без задачи —
+// 404, клиент пересоздаёт задачу (см. download-form).
 
 const RATE_LIMIT_PER_MINUTE = 10;
 const POLL_RATE_LIMIT_PER_MINUTE = 120;
 // Сколько ждём результат внутри POST, прежде чем перейти на опрос (env — для тестов)
 const INLINE_BUDGET_MS = () => Number(process.env.VIDEO_INFO_INLINE_MS ?? 20_000);
+// Бюджет синхронной обработки внутри poll-GET на serverless (< maxDuration)
+const POLL_RUN_BUDGET_MS = 50_000;
+const IS_SERVERLESS = () => Boolean(process.env.VERCEL);
 
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -60,7 +69,12 @@ async function handlePost(request: Request) {
     return Response.json({ task_id: existing.task_id, status: "pending" }, { status: 202 });
   }
 
-  const task = createTask("get_video_info", videoId);
+  const task = createTask("get_video_info", videoId, videoId);
+
+  // Serverless: фон не живёт после ответа — отвечаем сразу, выполнение драйвит poll-GET
+  if (IS_SERVERLESS()) {
+    return Response.json({ task_id: task.task_id, status: "pending" }, { status: 202 });
+  }
 
   // Фоновая обработка через очередь (лимит параллелизма); не ждём дольше inline-бюджета
   let processing: Promise<void>;
@@ -119,6 +133,24 @@ async function handleGet(request: Request) {
       { message: "Задание не найдено, попробуйте заново." },
       { status: 404 },
     );
+  }
+
+  // Serverless: выполнение драйвит poll. Задача ещё не обрабатывается — запускаем
+  // синхронно внутри этого запроса (single-flight по флагу processing).
+  if (IS_SERVERLESS() && task.status === "pending" && !task.processing) {
+    const videoId = typeof task.payload === "string" ? task.payload : null;
+    if (!videoId) {
+      return Response.json({ message: "Задание повреждено, попробуйте заново." }, { status: 404 });
+    }
+    task.processing = true;
+    try {
+      await Promise.race([
+        runVideoInfoTask(task.task_id, videoId).catch(() => {}),
+        new Promise((resolve) => setTimeout(resolve, POLL_RUN_BUDGET_MS)),
+      ]);
+    } finally {
+      task.processing = false;
+    }
   }
 
   return Response.json({

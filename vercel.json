@@ -1,4 +1,8 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "framework": "nextjs"
+  "framework": "nextjs",
+  "functions": {
+    "app/api/get-video-info/route.ts": { "maxDuration": 60 },
+    "app/api/proxy/route.ts": { "maxDuration": 60 }
+  }
 }

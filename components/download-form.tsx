@@ -122,12 +122,30 @@ export default function DownloadForm({ premiumBlock = false }: { premiumBlock?: 
     }
   };
 
-  const pollVideoInfoTask = async (taskId: string) => {
+  // Serverless-нюанс: poll может попасть на инстанс, который не знает задачу (404) —
+  // пересоздаём её и продолжаем опрос (до 2 раз), для пользователя это бесшовно
+  const pollVideoInfoTask = async (initialTaskId: string) => {
+    let taskId = initialTaskId;
+    let recreations = 0;
     const deadline = Date.now() + 90_000;
     while (Date.now() < deadline) {
       await new Promise((r) => setTimeout(r, 1500));
       const res = await fetch(`/api/get-video-info?task_id=${encodeURIComponent(taskId)}`);
       const data = await res.json();
+      if (res.status === 404 && recreations < 2) {
+        recreations += 1;
+        const recreate = await fetch("/api/get-video-info", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url }),
+        });
+        const recreated = await recreate.json();
+        if (recreate.ok || recreate.status === 202) {
+          if (recreated.status === "completed") return recreated.data;
+          taskId = recreated.task_id;
+          continue;
+        }
+      }
       if (!res.ok) throw new Error(data.message || "Задание не найдено, попробуйте заново.");
       if (data.status === "completed") return data.data;
       if (data.status === "failed") {
