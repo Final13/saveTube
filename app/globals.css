@@ -6,8 +6,27 @@
   --font-sans: var(--font-montserrat), ui-sans-serif, system-ui, sans-serif;
 }
 
+/* Палитра в духе playerok (зафиксировано, не откатывать):
+   sky-* = фирменный синий playerok (#1453FF и оттенки), zinc-950/900/50 =
+   их фоны тёмной/светлой темы. Переопределение здесь перекрашивает весь сайт. */
+@theme {
+  /* Акцентный синий playerok */
+  --color-sky-50: #eef3ff;
+  --color-sky-200: #c7d6ff;
+  --color-sky-400: #5286ff;
+  --color-sky-500: #2663f0;
+  --color-sky-600: #1453ff;
+  --color-sky-700: #0f43d6;
+  --color-sky-800: #1e40b8;
+  --color-sky-950: #0e1b3d;
+  /* Фоны playerok: тёмная #14161A, карточки тёмной #282933, светлые блоки #F2F4F7 */
+  --color-zinc-50: #f2f4f7;
+  --color-zinc-900: #282933;
+  --color-zinc-950: #14161a;
+}
+
 body {
-  background: var(--color-zinc-50);
+  background: #ffffff;
   color: var(--color-zinc-900);
 }
 

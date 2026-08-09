@@ -42,9 +42,9 @@ export default function Header({
   }, []);
 
   return (
-    <header className="sticky top-0 z-40 bg-slate-700 dark:bg-slate-900">
+    <header className="sticky top-0 z-40 border-b border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
       <div className="mx-auto flex h-16 max-w-5xl items-center justify-between px-4">
-        <Link href="/" className="text-xl font-bold italic text-white">
+        <Link href="/" className="text-xl font-bold italic text-sky-600 dark:text-sky-400">
           SaveTube
         </Link>
         <div className="flex items-center gap-1">
@@ -52,21 +52,21 @@ export default function Header({
           {premium ? (
             <Link
               href="/account"
-              className="flex items-center gap-1.5 rounded-lg bg-amber-400/15 px-3 py-1.5 text-sm font-semibold text-amber-300 transition hover:bg-amber-400/25"
+              className="flex items-center gap-1.5 rounded-lg bg-amber-400/15 px-3 py-1.5 text-sm font-semibold text-amber-600 transition hover:bg-amber-400/25 dark:text-amber-300"
             >
               <Zap className="size-4 fill-amber-400 text-amber-400" /> Премиум
             </Link>
           ) : loggedIn ? (
             <Link
               href="/account"
-              className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-white transition hover:bg-slate-600"
+              className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-zinc-700 transition hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-800"
             >
               <User className="size-4" /> Кабинет
             </Link>
           ) : (
             <button
               onClick={() => setAuthOpen(true)}
-              className="rounded-lg px-3 py-1.5 text-sm font-medium text-white transition hover:bg-slate-600"
+              className="rounded-lg px-3 py-1.5 text-sm font-medium text-zinc-700 transition hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-800"
             >
               Войти
             </button>

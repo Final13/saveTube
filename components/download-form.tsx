@@ -32,7 +32,7 @@ const MAX_RETRIES = 4;
 
 type PremiumScreen = "default" | "success" | "error";
 
-export default function DownloadForm({ premiumBlock = false }: { premiumBlock?: boolean }) {
+export default function DownloadForm() {
   const [url, setUrl] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -155,15 +155,20 @@ export default function DownloadForm({ premiumBlock = false }: { premiumBlock?: 
     throw new Error("RuTube отвечает слишком долго, попробуйте позже.");
   };
 
-  const fetchSegment = async (segmentUrl: string): Promise<Blob> => {
+  const fetchSegment = async (segmentUrl: string, signal: AbortSignal): Promise<Blob> => {
     let lastError: Error | null = null;
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      if (signal.aborted) throw new Error("Загрузка остановлена.");
       try {
         // На ретрае — следующая прокси-нода из списка (если внешние ноды заданы)
-        const res = await fetch(buildProxyUrl(segmentUrl, proxyTokenRef.current, attempt - 1));
+        const res = await fetch(buildProxyUrl(segmentUrl, proxyTokenRef.current, attempt - 1), {
+          signal,
+        });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return await res.blob();
       } catch (e) {
+        // Отмена (упал другой воркер) — не ретраим, выходим сразу
+        if (signal.aborted) throw new Error("Загрузка остановлена.");
         lastError = e instanceof Error ? e : new Error("Ошибка сети");
         if (attempt < MAX_RETRIES) {
           await new Promise((r) => setTimeout(r, 1000 * attempt));
@@ -208,13 +213,17 @@ export default function DownloadForm({ premiumBlock = false }: { premiumBlock?: 
       let cursor = 0;
       let finished = 0;
       let inFlight = 0;
+      // При падении любого воркера отменяем остальные (abort) и не берём новые сегменты —
+      // иначе загрузка продолжает качать после показа ошибки
+      const controller = new AbortController();
+      let poolError: Error | null = null;
 
       const worker = async () => {
-        while (cursor < segments.length) {
+        while (cursor < segments.length && !poolError) {
           const i = cursor++;
           inFlight++;
           setActiveThreads(inFlight);
-          chunks[i] = await fetchSegment(segments[i]);
+          chunks[i] = await fetchSegment(segments[i], controller.signal);
           inFlight--;
           setActiveThreads(inFlight);
           finished++;
@@ -223,12 +232,14 @@ export default function DownloadForm({ premiumBlock = false }: { premiumBlock?: 
       };
 
       // Пул воркеров пополняется до threadsRef.current — число потоков можно менять на лету
-      let poolError: Error | null = null;
       const workers = new Set<Promise<void>>();
       while ((cursor < segments.length || workers.size > 0) && !poolError) {
         while (workers.size < threadsRef.current && cursor < segments.length && !poolError) {
           const p = worker().catch((e: Error) => {
-            poolError = e;
+            if (!poolError) {
+              poolError = e;
+              controller.abort();
+            }
           });
           workers.add(p);
           p.finally(() => workers.delete(p));
@@ -281,7 +292,7 @@ export default function DownloadForm({ premiumBlock = false }: { premiumBlock?: 
             onKeyDown={(e) => e.key === "Enter" && !loading && handleConvert()}
             placeholder="https://rutube.ru/video/..."
             disabled={loading || downloading}
-            className="h-12 flex-1 rounded-lg border border-zinc-300 bg-white px-4 text-zinc-900 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-200 dark:focus:ring-sky-800 disabled:opacity-60"
+            className="h-12 w-full sm:flex-1 rounded-lg border border-zinc-300 bg-white px-4 text-zinc-900 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-200 dark:focus:ring-sky-800 disabled:opacity-60"
           />
           <button
             onClick={handleConvert}
@@ -431,28 +442,6 @@ export default function DownloadForm({ premiumBlock = false }: { premiumBlock?: 
               Скачать другое видео
             </button>
           )}
-        </div>
-      )}
-
-      {/* Блок «Ускорить загрузку» */}
-      {premiumBlock && !premium && (
-        <div className="mt-6 space-y-3 rounded-xl border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950 p-4">
-          <p className="flex items-center gap-2 font-semibold text-amber-800 dark:text-amber-300">
-            <Zap className="size-5" /> Ускорить загрузку
-          </p>
-          <p className="text-sm text-amber-800 dark:text-amber-300">
-            По умолчанию скачивание видео происходит в 2 потока. Подписка позволит указать любое
-            количество потоков и скачивать видео значительно быстрее.
-          </p>
-          <button
-            onClick={() => {
-              setPremiumScreen("default");
-              setPremiumOpen(true);
-            }}
-            className="rounded-lg bg-amber-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-amber-600 dark:bg-amber-600 dark:hover:bg-amber-500"
-          >
-            Выберите подписку
-          </button>
         </div>
       )}
 

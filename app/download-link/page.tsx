@@ -27,7 +27,7 @@ export default function DownloadLinkPage() {
           доступные форматы, после чего вы сможете загрузить файл на своё устройство.
         </p>
         <div className="mx-auto mt-8 max-w-2xl text-left">
-          <DownloadForm premiumBlock />
+          <DownloadForm />
         </div>
         <p className="mt-4 text-sm text-zinc-500 dark:text-zinc-400">
           Скачивая видео, вы соглашаетесь с{" "}
