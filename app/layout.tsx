@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Montserrat } from "next/font/google";
+import { Inter } from "next/font/google";
 import { cookies } from "next/headers";
 import Header from "@/components/header";
 import Footer from "@/components/footer";
@@ -9,8 +9,8 @@ import { getSession } from "@/lib/auth/session";
 import { SITE_DESCRIPTION, SITE_NAME, SITE_URL } from "@/lib/site";
 import "./globals.css";
 
-const montserrat = Montserrat({
-  variable: "--font-montserrat",
+const inter = Inter({
+  variable: "--font-inter",
   subsets: ["latin", "cyrillic"],
 });
 
@@ -70,7 +70,7 @@ export default async function RootLayout({
   return (
     <html
       lang="ru"
-      className={`${montserrat.variable} h-full antialiased ${serverTheme}`.trim()}
+      className={`${inter.variable} h-full antialiased ${serverTheme}`.trim()}
       suppressHydrationWarning
     >
       {/* Инлайн-скрипт против FOUC: ставит класс dark/light на <html> до рендера body */}

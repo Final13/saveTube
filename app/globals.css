@@ -3,12 +3,13 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme inline {
-  --font-sans: var(--font-montserrat), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-inter), Roboto, Arial, ui-sans-serif, system-ui, sans-serif;
 }
 
 /* Палитра в духе playerok (зафиксировано, не откатывать):
    sky-* = фирменный синий playerok (#1453FF и оттенки), zinc-950/900/50 =
-   их фоны тёмной/светлой темы. Переопределение здесь перекрашивает весь сайт. */
+   их фоны тёмной/светлой темы. Переопределение здесь перекрашивает весь сайт.
+   Также: text-sm = 16px — владелец хочет минимум 16px для всего текста. */
 @theme {
   /* Акцентный синий playerok */
   --color-sky-50: #eef3ff;
@@ -23,6 +24,9 @@
   --color-zinc-50: #f2f4f7;
   --color-zinc-900: #282933;
   --color-zinc-950: #14161a;
+  /* Весь «мелкий» текст — 16px (вместо дефолтных 14px у text-sm) */
+  --text-sm: 1rem;
+  --text-sm--line-height: 1.5rem;
 }
 
 body {
@@ -56,7 +60,7 @@ button:disabled,
 .prose-savetube {
   max-width: 48rem;
   color: var(--color-zinc-600);
-  font-size: 0.9375rem;
+  font-size: 1rem;
   line-height: 1.7;
 }
 .prose-savetube h1 {
