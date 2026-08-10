@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { CircleAlert, Download, Loader2, Minus, Plus, X, Zap } from "lucide-react";
+import { CircleAlert, Download, Loader2, Minus, Pause, Plus, X, Zap } from "lucide-react";
 import PremiumModal from "@/components/premium-modal";
 import { buildProxyUrl } from "@/lib/proxy-nodes";
 
@@ -43,7 +43,10 @@ export default function DownloadForm() {
   const [downloading, setDownloading] = useState(false);
   const [downloaded, setDownloaded] = useState(0);
   const [total, setTotal] = useState(0);
-  const [activeThreads, setActiveThreads] = useState(0);
+  // Статус каждого потока: idle — стоит (иконка паузы), active — качает (спиннер),
+  // retry — ждёт перед повтором (тоже пауза). Как в оригинале.
+  const [slotStates, setSlotStates] = useState<Array<"idle" | "active" | "retry">>([]);
+  const busySlotsRef = useRef<Set<number>>(new Set());
   const [done, setDone] = useState(false);
 
   const [threads, setThreads] = useState(MIN_THREADS);
@@ -155,11 +158,16 @@ export default function DownloadForm() {
     throw new Error("RuTube отвечает слишком долго, попробуйте позже.");
   };
 
-  const fetchSegment = async (segmentUrl: string, signal: AbortSignal): Promise<Blob> => {
+  const fetchSegment = async (
+    segmentUrl: string,
+    signal: AbortSignal,
+    onState?: (state: "active" | "retry") => void,
+  ): Promise<Blob> => {
     let lastError: Error | null = null;
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       if (signal.aborted) throw new Error("Загрузка остановлена.");
       try {
+        onState?.(attempt === 1 ? "active" : "retry");
         // На ретрае — следующая прокси-нода из списка (если внешние ноды заданы)
         const res = await fetch(buildProxyUrl(segmentUrl, proxyTokenRef.current, attempt - 1), {
           signal,
@@ -207,27 +215,57 @@ export default function DownloadForm() {
     setDone(false);
     setDownloaded(0);
     setTotal(segments.length);
+    setSlotStates(Array.from({ length: threadsRef.current }, () => "idle"));
+    busySlotsRef.current = new Set();
+
+    // Статус слота (потока) для живой анимации; слоты вне текущего числа потоков игнорим
+    const setSlot = (slot: number | null, state: "idle" | "active" | "retry") => {
+      if (slot === null) return;
+      setSlotStates((prev) => {
+        if (slot >= prev.length || prev[slot] === state) return prev;
+        const next = [...prev];
+        next[slot] = state;
+        return next;
+      });
+    };
+    const acquireSlot = (): number | null => {
+      for (let i = 0; i < threadsRef.current; i++) {
+        if (!busySlotsRef.current.has(i)) {
+          busySlotsRef.current.add(i);
+          return i;
+        }
+      }
+      return null; // потоки уменьшили на лету — воркер доработает без слота
+    };
 
     try {
       const chunks: Blob[] = new Array(segments.length);
       let cursor = 0;
       let finished = 0;
-      let inFlight = 0;
       // При падении любого воркера отменяем остальные (abort) и не берём новые сегменты —
       // иначе загрузка продолжает качать после показа ошибки
       const controller = new AbortController();
       let poolError: Error | null = null;
 
       const worker = async () => {
-        while (cursor < segments.length && !poolError) {
-          const i = cursor++;
-          inFlight++;
-          setActiveThreads(inFlight);
-          chunks[i] = await fetchSegment(segments[i], controller.signal);
-          inFlight--;
-          setActiveThreads(inFlight);
-          finished++;
-          setDownloaded(finished);
+        const slot = acquireSlot();
+        try {
+          // Непрерывный пул: воркер сразу берёт следующий сегмент после завершения,
+          // не ждёт остальных (никаких пачек по N)
+          while (cursor < segments.length && !poolError) {
+            const i = cursor++;
+            chunks[i] = await fetchSegment(segments[i], controller.signal, (s) =>
+              setSlot(slot, s),
+            );
+            finished++;
+            setDownloaded(finished);
+            // Видимая пауза слота после каждого сегмента (как в оригинале — эффект
+            // живой загрузки: слот мелькает паузой и снова зеленеет)
+            setSlot(slot, "idle");
+            await new Promise((r) => setTimeout(r, 150));
+          }
+        } finally {
+          setSlot(slot, "idle");
         }
       };
 
@@ -262,7 +300,8 @@ export default function DownloadForm() {
       setError(e instanceof Error ? e.message : "Ошибка загрузки, попробуйте позже.");
     } finally {
       setDownloading(false);
-      setActiveThreads(0);
+      setSlotStates([]);
+      busySlotsRef.current = new Set();
     }
   };
 
@@ -405,12 +444,24 @@ export default function DownloadForm() {
               </button>
             )}
             <div className="flex items-center gap-1">
-              {Array.from({ length: threads }).map((_, i) => (
-                <Loader2
-                  key={i}
-                  className={`size-4 ${i < activeThreads ? "animate-spin text-sky-600" : "text-zinc-300 dark:text-zinc-600"}`}
-                />
-              ))}
+              {(downloading ? slotStates : Array.from({ length: threads }, () => "idle" as const)).map(
+                (state, i) => (
+                  // Как в оригинале: круглая плашка, простаивает — серая с паузой,
+                  // качает — зелёная со спиннером. Мелькает по факту работы потока.
+                  <span
+                    key={i}
+                    className={`flex size-6 items-center justify-center rounded-full transition-colors ${
+                      state === "active" ? "bg-green-600" : "bg-zinc-400 dark:bg-zinc-600"
+                    }`}
+                  >
+                    {state === "active" ? (
+                      <Loader2 className="size-4 animate-spin text-white" />
+                    ) : (
+                      <Pause className="size-4 fill-white text-white" />
+                    )}
+                  </span>
+                ),
+              )}
             </div>
             {premium && (
               <button

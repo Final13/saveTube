@@ -1,22 +1,19 @@
 // Выделенная прокси-нода для скачивания сегментов RuTube (масштабирование по полосе).
 // Голый Node.js, ноль зависимостей: копируется на VPS одним файлом и запускается `node server.js`.
 //
-// Логика зеркалит app/api/proxy/route.ts основного приложения, плюс CORS
-// (браузер ходит на ноду напрямую) и health-check.
+// Нода ОТКРЫТАЯ (решение владельца, как в старом бэке): токен не проверяется.
+// Защита: whitelist хостов (только CDN RuTube) + лимит одновременных стримов на IP.
 //
 // Env:
-//   PROXY_TOKEN_SECRET — ОБЯЗАТЕЛЕН, тот же что у основного приложения (иначе все запросы 403)
 //   PORT               — порт (по умолчанию 3100)
 //   PROXY_NODE_ORIGIN  — допустимые Origin фронта для CORS, через запятую
-//                        (по умолчанию https://save-tube.ru; "*" — любой)
+//                        ("*" — любой; у нас прод-код работает с "*")
 
-import { createHmac, timingSafeEqual } from "node:crypto";
 import http from "node:http";
 import https from "node:https";
 
-const SECRET = process.env.PROXY_TOKEN_SECRET ?? "";
 const PORT = Number(process.env.PORT ?? 3100);
-const ORIGINS = (process.env.PROXY_NODE_ORIGIN ?? "https://save-tube.ru")
+const ORIGINS = (process.env.PROXY_NODE_ORIGIN ?? "*")
   .split(",")
   .map((s) => s.trim())
   .filter(Boolean);
@@ -29,23 +26,6 @@ const UPSTREAM_HEADERS = {
   "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
   Referer: "https://rutube.ru/",
 };
-
-// --- Проверка токена: формат `${expiresAtMs}.${hmacSha256Hex}`, как в lib/proxy-token.ts ---
-
-function verifyToken(token) {
-  if (!token || !SECRET) return false;
-  const dot = token.indexOf(".");
-  if (dot <= 0) return false;
-  const expiresAtRaw = token.slice(0, dot);
-  const signature = token.slice(dot + 1);
-  const expiresAt = Number(expiresAtRaw);
-  if (!Number.isFinite(expiresAt) || expiresAt < Date.now()) return false;
-
-  const expected = createHmac("sha256", SECRET).update(expiresAtRaw).digest("hex");
-  const a = Buffer.from(signature);
-  const b = Buffer.from(expected);
-  return a.length === b.length && timingSafeEqual(a, b);
-}
 
 // --- Whitelist хостов: только CDN RuTube (как isAllowedCdnUrl в lib/rutube.ts) ---
 
@@ -132,11 +112,6 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  if (!verifyToken(url.searchParams.get("t"))) {
-    respondJson(req, res, 403, "Недействительный токен.");
-    return;
-  }
-
   const target = url.searchParams.get("url") ?? "";
   if (!isAllowedCdnUrl(target)) {
     respondJson(req, res, 400, "Недопустимый адрес.");
@@ -201,8 +176,5 @@ const server = http.createServer((req, res) => {
 });
 
 server.listen(PORT, () => {
-  if (!SECRET) {
-    console.warn("[proxy-node] ВНИМАНИЕ: PROXY_TOKEN_SECRET не задан — все запросы будут 403");
-  }
   console.log(`[proxy-node] listening on :${PORT}, origins: ${ORIGINS.join(", ")}`);
 });
