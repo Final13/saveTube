@@ -21,9 +21,13 @@ function getTransporter() {
     port,
     secure: port === 465,
     auth: { user, pass },
-    // На локальной машине антивирус MITM'ит TLS (self-signed в цепочке) —
-    // на dev проверку отключаем, как в lib/tbank.ts; в проде — строгая.
-    tls: { rejectUnauthorized: process.env.NODE_ENV === "production" },
+    // На dev антивирус MITM'ит TLS — проверка отключена. На проде строгая, КРОМЕ
+    // SMTP_INSECURE_TLS=true: продовый почтовик — локальный Exim с self-signed
+    // сертификатом (mail.save-tube.ru — этот же сервер, MITM невозможен).
+    tls: {
+      rejectUnauthorized:
+        process.env.SMTP_INSECURE_TLS === "true" ? false : process.env.NODE_ENV === "production",
+    },
     // Таймауты обязательны: зависший SMTP не должен вешать HTTP-запрос
     connectionTimeout: 10_000,
     greetingTimeout: 10_000,

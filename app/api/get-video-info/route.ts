@@ -6,24 +6,20 @@ import { enqueueTask, QueueFullError } from "@/lib/task-queue";
 import { runVideoInfoTask } from "@/lib/video-info-task";
 import { trackRequest } from "@/lib/metrics";
 
-// Модель как в старом бэкенде: POST создаёт задачу и отвечает сразу, клиент пингует
-// GET ?task_id до completed/failed. Если RuTube отвечает быстро — результат отдаём
-// прямо в POST (inline-бюджет), опрос не нужен. Если «залагал» — обработка продолжается
-// в фоне с ретраями, клиент просто ждёт (запрос не падает по таймауту).
+// Модель как в старом бэкенде: POST создаёт задачу и отвечает СРАЗУ 202 + task_id
+// (без inline-ожидания — решение владельца), клиент пингует GET ?task_id до
+// completed/failed (интервал 1.5с, до 90с). Кеш-хит отдаёт completed в POST мгновенно.
 // Обработка идёт через очередь с лимитом параллелизма (lib/task-queue.ts): под нагрузкой
 // задачи ждут FIFO, переполненная очередь отклоняет новые — нода не умирает.
 // Повторный POST того же видео получает уже созданную задачу (дедуп по videoId).
 //
 // Serverless (Vercel): фоновая обработка после ответа не живёт (функция замораживается),
-// поэтому POST отвечает 202 СРАЗУ (как в старом бэке), а выполнение драйвит сам
-// poll-GET: первый запрос статуса синхронно выполняет задачу (до ~50с, см. maxDuration
-// в vercel.json) и отвечает completed/pending. Если poll попал на инстанс без задачи —
-// 404, клиент пересоздаёт задачу (см. download-form).
+// поэтому там задача в очередь НЕ ставится, а выполнение драйвит сам poll-GET: первый
+// запрос статуса синхронно выполняет задачу (до ~50с, см. maxDuration в vercel.json).
+// Если poll попал на инстанс без задачи — 404, клиент пересоздаёт задачу (см. download-form).
 
 const RATE_LIMIT_PER_MINUTE = 10;
 const POLL_RATE_LIMIT_PER_MINUTE = 120;
-// Сколько ждём результат внутри POST, прежде чем перейти на опрос (env — для тестов)
-const INLINE_BUDGET_MS = () => Number(process.env.VIDEO_INFO_INLINE_MS ?? 20_000);
 // Бюджет синхронной обработки внутри poll-GET на serverless (< maxDuration)
 const POLL_RUN_BUDGET_MS = 50_000;
 const IS_SERVERLESS = () => Boolean(process.env.VERCEL);
@@ -76,10 +72,10 @@ async function handlePost(request: Request) {
     return Response.json({ task_id: task.task_id, status: "pending" }, { status: 202 });
   }
 
-  // Фоновая обработка через очередь (лимит параллелизма); не ждём дольше inline-бюджета
-  let processing: Promise<void>;
+  // Фоновая обработка через очередь (лимит параллелизма). POST не ждёт результат —
+  // клиент забирает его пингами GET ?task_id (как в старом бэкенде)
   try {
-    processing = enqueueTask(() =>
+    void enqueueTask(() =>
       runVideoInfoTask(task.task_id, videoId).then(
         () => {},
         () => {},
@@ -95,22 +91,8 @@ async function handlePost(request: Request) {
     }
     throw error;
   }
-  await Promise.race([
-    processing,
-    new Promise((resolve) => setTimeout(resolve, INLINE_BUDGET_MS())),
-  ]);
 
-  const current = getTask(task.task_id) ?? task;
-  if (current.status === "completed") {
-    return Response.json({ task_id: current.task_id, status: "completed", data: current.data });
-  }
-  if (current.status === "failed") {
-    return Response.json(
-      { task_id: current.task_id, status: "failed", message: current.message },
-      { status: 502 },
-    );
-  }
-  return Response.json({ task_id: current.task_id, status: "pending" }, { status: 202 });
+  return Response.json({ task_id: task.task_id, status: "pending" }, { status: 202 });
 }
 
 async function handleGet(request: Request) {
