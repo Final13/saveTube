@@ -11,8 +11,15 @@ import { SITE_URL } from "@/lib/site";
 const API_URL = "https://api.yookassa.ru/v3";
 
 function creds(): { shopId: string; secretKey: string } {
-  const shopId = process.env.YOOKASSA_SHOP_ID ?? "";
-  const secretKey = process.env.YOOKASSA_SECRET_KEY ?? "";
+  // Два магазина: боевой (YOOKASSA_*) и тестовый (YOOKASSA_TEST_*), как в CanvasKit.
+  // Тестовый — на Vercel (VERCEL=1) и на dev (NODE_ENV !== production); прод (VPS) — всегда боевой.
+  const useTest = process.env.VERCEL === "1" || process.env.NODE_ENV !== "production";
+  const shopId =
+    (useTest ? process.env.YOOKASSA_TEST_SHOP_ID : "") || process.env.YOOKASSA_SHOP_ID || "";
+  const secretKey =
+    (useTest ? process.env.YOOKASSA_TEST_SECRET_KEY : "") ||
+    process.env.YOOKASSA_SECRET_KEY ||
+    "";
   if (!shopId || !secretKey) {
     throw new Error("Платёжный сервис временно недоступен.");
   }

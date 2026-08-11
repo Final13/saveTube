@@ -7,7 +7,7 @@ import { getPaymentProvider } from "@/lib/settings-store";
 import { getClientIp, rateLimit } from "@/lib/rate-limit";
 import { trackRequest } from "@/lib/metrics";
 import { createUser, findUserByEmail } from "@/lib/auth/user-store";
-import { setSession } from "@/lib/auth/session";
+import { getSession, setSession } from "@/lib/auth/session";
 import { sendWelcomeEmail } from "@/lib/email";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -16,6 +16,9 @@ const RATE_LIMIT_PER_MINUTE = 5;
 // Создание платежа: запись в БД + платёж у активного провайдера (T-Bank или ЮKassa —
 // переключается в админке), возвращает ссылку на оплату. Контракт ответа одинаковый
 // для обоих провайдеров: { url, payment_id }.
+// Привязка подписки: если юзер залогинен — ВСЕГДА к email сессии (параметр email
+// игнорируется); receipt_email — email для чека 54-ФЗ (дефолт — email сессии).
+// Незалогиненные: email параметр = и привязка, и чек (авто-регистрация при первой оплате).
 async function handleGet(request: Request) {
   const ip = getClientIp(request);
   if (!rateLimit(`payment:${ip}`, RATE_LIMIT_PER_MINUTE, 60_000)) {
@@ -26,14 +29,31 @@ async function handleGet(request: Request) {
   }
 
   const { searchParams } = new URL(request.url);
-  const email = (searchParams.get("email") ?? "").trim();
   const rateIndex = Number(searchParams.get("rate"));
+  const session = await getSession();
 
-  if (!EMAIL_REGEX.test(email)) {
-    return Response.json(
-      { message: "Пожалуйста, введите корректный E-Mail адрес" },
-      { status: 400 },
-    );
+  // email — привязка подписки; receiptEmail — кому чек (могут отличаться у залогиненных)
+  let email: string;
+  let receiptEmail: string;
+  if (session.email) {
+    email = session.email;
+    const receiptParam = (searchParams.get("receipt_email") ?? "").trim();
+    if (receiptParam && !EMAIL_REGEX.test(receiptParam)) {
+      return Response.json(
+        { message: "Пожалуйста, введите корректный E-Mail для чека" },
+        { status: 400 },
+      );
+    }
+    receiptEmail = receiptParam || session.email;
+  } else {
+    email = (searchParams.get("email") ?? "").trim();
+    if (!EMAIL_REGEX.test(email)) {
+      return Response.json(
+        { message: "Пожалуйста, введите корректный E-Mail адрес" },
+        { status: 400 },
+      );
+    }
+    receiptEmail = email;
   }
 
   const rate = getRate(rateIndex);
@@ -86,7 +106,7 @@ async function handleGet(request: Request) {
           paymentId,
           amountRub: rate.priceRub,
           title,
-          email,
+          email: receiptEmail,
         });
       } catch (error) {
         // В магазине не включён рекуррент — проводим как разовый платёж
@@ -94,7 +114,7 @@ async function handleGet(request: Request) {
         const message = error instanceof Error ? error.message : "";
         if (!message.includes("recurring payments")) throw error;
         yk = await createRedirectPayment(
-          { paymentId, amountRub: rate.priceRub, title, email },
+          { paymentId, amountRub: rate.priceRub, title, email: receiptEmail },
           { saveMethod: false, idempotenceKey: `create-${paymentId}-plain` },
         );
       }
@@ -120,7 +140,7 @@ async function handleGet(request: Request) {
       orderId: String(paymentId),
       amount,
       description: title,
-      email,
+      email: receiptEmail,
     });
 
     if (!result.Success || !result.PaymentURL || !result.PaymentId) {

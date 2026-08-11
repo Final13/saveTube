@@ -360,9 +360,9 @@ export default function DownloadForm() {
         )}
       </div>
 
-      {/* Результат: метаданные и качества */}
+      {/* Результат: метаданные и качества (text-left — как в оригинале, секция главной центрированная) */}
       {info && !downloading && (
-        <div className="mt-6 space-y-4 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900 p-4">
+        <div className="mt-6 space-y-4 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900 p-4 text-left">
           <div className="flex items-start justify-between gap-4">
             <div className="space-y-1">
               <p className="text-sm text-zinc-500 dark:text-zinc-400">Автор видео</p>

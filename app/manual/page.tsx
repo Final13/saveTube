@@ -90,7 +90,7 @@ export default function ManualPage() {
 
       <div className="mt-8 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5">
         <h2 className="text-lg font-semibold">Видеоинструкция: Как скачать видео с RuTube</h2>
-        <div className="relative mt-4 aspect-video w-full max-w-[720px] overflow-hidden rounded-lg">
+        <div className="relative mt-4 aspect-video w-full overflow-hidden rounded-lg">
           <iframe
             src="https://rutube.ru/play/embed/98b353633842aa8c68992d81c93e8595"
             title="Видеоинструкция: Как скачать видео с RuTube"

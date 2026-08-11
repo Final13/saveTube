@@ -36,8 +36,23 @@ export default function PremiumModal({
   const [checkEmail, setCheckEmail] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [sessionEmail, setSessionEmail] = useState<string | null>(null);
   const pollCount = useRef(0);
   const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Если юзер залогинен — узнаём email аккаунта: подписка привяжется к нему,
+  // а инпут становится полем «email для чека» (дефолт — тот же email)
+  useEffect(() => {
+    fetch("/api/auth/me")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data?.email) {
+          setSessionEmail(data.email);
+          setEmail(data.email);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const stopPolling = () => {
     if (pollTimer.current) clearInterval(pollTimer.current);
@@ -77,23 +92,37 @@ export default function PremiumModal({
 
   const handlePay = async () => {
     setError(null);
-    const trimmed = email.trim();
-    if (!EMAIL_REGEX.test(trimmed)) {
-      setError("Пожалуйста, введите корректный E-Mail адрес");
-      return;
-    }
     if (rateIndex === null) return;
+
+    let query: string;
+    let bindEmail: string;
+    if (sessionEmail) {
+      // Привязку решает сервер по сессии; инпут — только email для чека
+      const receipt = email.trim() || sessionEmail;
+      if (!EMAIL_REGEX.test(receipt)) {
+        setError("Пожалуйста, введите корректный E-Mail для чека");
+        return;
+      }
+      query = `rate=${rateIndex}&receipt_email=${encodeURIComponent(receipt)}`;
+      bindEmail = sessionEmail;
+    } else {
+      const trimmed = email.trim();
+      if (!EMAIL_REGEX.test(trimmed)) {
+        setError("Пожалуйста, введите корректный E-Mail адрес");
+        return;
+      }
+      query = `email=${encodeURIComponent(trimmed)}&rate=${rateIndex}`;
+      bindEmail = trimmed;
+    }
 
     setLoading(true);
     try {
-      const res = await fetch(
-        `/api/payment?email=${encodeURIComponent(trimmed)}&rate=${rateIndex}`,
-      );
+      const res = await fetch(`/api/payment?${query}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Ошибка сервера, попробуйте позднее");
       window.open(data.url, "_blank");
       setScreen("wait");
-      startPolling(data.payment_id, trimmed);
+      startPolling(data.payment_id, bindEmail);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Ошибка сервера, попробуйте позднее");
     } finally {
@@ -178,6 +207,12 @@ export default function PremiumModal({
                 </button>
               ))}
             </div>
+            {sessionEmail && (
+              <p className="text-sm text-zinc-600 dark:text-zinc-400">
+                Подписка будет привязана к{" "}
+                <span className="font-medium text-zinc-900 dark:text-zinc-100">{sessionEmail}</span>
+              </p>
+            )}
             <input
               type="email"
               value={email}
@@ -185,9 +220,14 @@ export default function PremiumModal({
                 setEmail(e.target.value);
                 setError(null);
               }}
-              placeholder="Ваш E-Mail"
+              placeholder={sessionEmail ? "E-Mail для чека" : "Ваш E-Mail"}
               className="h-11 w-full rounded-lg border border-zinc-300 px-4 outline-none dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100 transition focus:border-sky-500 focus:ring-2 focus:ring-sky-200 dark:focus:ring-sky-800"
             />
+            {sessionEmail && (
+              <p className="-mt-2 text-xs text-zinc-500 dark:text-zinc-400">
+                На этот e-mail придёт чек — можно изменить, на привязку подписки это не влияет.
+              </p>
+            )}
             <p className="text-sm text-zinc-500 dark:text-zinc-400">
               Регистрируясь, вы соглашаетесь с{" "}
               <a
