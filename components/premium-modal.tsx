@@ -36,6 +36,7 @@ export default function PremiumModal({
   const [checkEmail, setCheckEmail] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [agreed, setAgreed] = useState(false);
   const pollCount = useRef(0);
   const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -131,6 +132,7 @@ export default function PremiumModal({
     setRateIndex(null);
     setError(null);
     setCheckEmail("");
+    setAgreed(false);
   };
 
   const close = () => {
@@ -188,10 +190,39 @@ export default function PremiumModal({
               placeholder="Ваш E-Mail"
               className="h-11 w-full rounded-lg border border-zinc-300 px-4 outline-none dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100 transition focus:border-sky-500 focus:ring-2 focus:ring-sky-200 dark:focus:ring-sky-800"
             />
+            <label className="flex cursor-pointer items-start gap-2 text-sm text-zinc-600 dark:text-zinc-400">
+              <input
+                type="checkbox"
+                checked={agreed}
+                onChange={(e) => setAgreed(e.target.checked)}
+                className="mt-0.5 size-4 shrink-0 cursor-pointer accent-sky-600"
+              />
+              <span>
+                Регистрируясь, я соглашаюсь с{" "}
+                <a
+                  href="/agreement"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-sky-700 transition hover:underline dark:text-sky-400"
+                >
+                  Пользовательским соглашением
+                </a>{" "}
+                и{" "}
+                <a
+                  href="/privacy-policy"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-sky-700 transition hover:underline dark:text-sky-400"
+                >
+                  Политикой конфиденциальности
+                </a>
+                .
+              </span>
+            </label>
             {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
             <button
               onClick={handlePay}
-              disabled={rateIndex === null || loading}
+              disabled={rateIndex === null || loading || !agreed}
               className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-sky-600 font-semibold text-white transition hover:bg-sky-700 disabled:opacity-60"
             >
               {loading ? <Loader2 className="size-5 animate-spin" /> : null}
