@@ -10,17 +10,30 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # Сборка в раннере GitHub: на VPS (3.7 ГБ RAM) next build не влезает.
+      # .env из секрета нужен ДО build — NEXT_PUBLIC_* вшиваются в бандл на этапе сборки.
+      - name: Build
+        run: |
+          printf '%s\n' "${{ secrets.ENV_FILE }}" > .env
+          npm ci
+          npm run build
+          npm prune --omit=dev
+
+      # В архиве: исходники + .next + production node_modules (сервер ничего не собирает)
       - name: Create archive
         run: |
-          printf '%s\n' "${{ secrets.ENV_FILE }}" > deploy.env
           tar -czf /tmp/deploy.tar.gz \
-            --exclude=node_modules \
             --exclude=.git \
-            --exclude=.next \
-            --exclude=.env \
             --exclude=.env.local \
             --exclude=.playwright-mcp \
             --exclude=proxy-node \
+            --exclude=node_modules/.cache \
+            --exclude=.next/cache \
             .
           cp /tmp/deploy.tar.gz .
 
@@ -39,35 +52,25 @@ jobs:
           host: 157.22.192.87
           username: save-tube
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          script_stop: true
+          # script_stop удалён из action v1 — используем set -e в скрипте
           script: |
+            set -e
+            # Node 22 из юзерспейса (root нет; системная Node 20 не подходит — undici@8 требует >= 22.19)
+            export PATH=/var/www/save-tube/data/opt/node22/bin:$PATH
+
             mkdir -p /var/www/save-tube/data/savetube
             cd /var/www/save-tube/data/savetube
 
-            # Ролling-бэкап текущей сборки (откат при неудачном билде)
-            rm -rf .next_bak
-            [ -d .next ] && mv .next .next_bak
-
-            # Чистим старые исходники, node_modules оставляем для быстрой установки
-            find . -mindepth 1 -maxdepth 1 ! -name 'node_modules' ! -name '.next_bak' -exec rm -rf {} + 2>/dev/null
-
+            # Всё приходит готовым из CI — просто заменяем содержимое
+            echo "== unpack =="
+            find . -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null
             tar -xzf /tmp/deploy.tar.gz
             rm -f /tmp/deploy.tar.gz
-            mv deploy.env .env
 
-            npm install
-
-            if npm run build; then
-              rm -rf .next_bak
-            else
-              # Билд упал — возвращаем прошлую сборку, сайт продолжает работать
-              rm -rf .next
-              [ -d .next_bak ] && mv .next_bak .next
-              exit 1
-            fi
-
-            # Линкуем public/ в веб-рут домена: статику отдаёт nginx напрямую
+            # Link public/ into the domain web root — nginx serves static directly
+            echo "== link public =="
             find /var/www/save-tube/data/www/save-tube.ru -maxdepth 1 -type l -exec rm -f {} \;
             find /var/www/save-tube/data/savetube/public -maxdepth 1 -mindepth 1 -exec bash -c 'ln -sf "$1" "/var/www/save-tube/data/www/save-tube.ru/$(basename "$1")"' _ {} \;
 
+            echo "== pm2 reload =="
             pm2 startOrReload ecosystem.config.js --update-env

@@ -103,9 +103,10 @@ Next.js 16 + React 19, App Router, Tailwind v4, lucide-react, алиас `@/`. �
 
 ## CI/CD (GitHub Actions → VPS 157.22.192.87, юзер save-tube)
 
-- Деплой по push в main: `.github/workflows/deploy.yml` (паттерн CanvasKit/nextjs): tar без node_modules/.next → scp → на сервере распаковка в `/var/www/save-tube/app`, `.env` из секрета `ENV_FILE`, `npm install && npm run build` (падение билда — откат на `.next_bak`), `pm2 startOrReload ecosystem.config.js` (процесс `savetube`, порт 3000).
-- Статика: содержимое `public/` симлинкуется в веб-рут `/var/www/save-tube/www` — отдаёт nginx напрямую; остальное — proxy_pass на `127.0.0.1:3000`.
-- Секреты репозитория: `SSH_PRIVATE_KEY` (deploy-ключ ed25519, пара лежит у пользователя в `~/.ssh/savetube_deploy_ed25519`), `ENV_FILE` (продовый .env).
+- Деплой по push в main: `.github/workflows/deploy.yml`. **Сборка в GitHub-раннере** (на VPS 3.7 ГБ RAM `next build` уводит машину в OOM — проверено боем): `.env` из секрета `ENV_FILE` пишется ДО build (NEXT_PUBLIC_* вшиваются при сборке) → `npm ci` → `npm run build` → `npm prune --omit=dev` → tar (исходники + .next + prod node_modules) → scp → на сервере только распаковка в `/var/www/save-tube/data/savetube` + линковка public + `pm2 startOrReload ecosystem.config.js` (процесс `savetube`, порт 3000).
+- **Node 22 — юзерспейсная**: `/var/www/save-tube/data/opt/node22` (симлинк → `node-v22.23.2-linux-x64`). Системная Node 20 НЕ подходит (undici@8 требует >= 22.19, иначе билд падает на `markAsUncloneable`). В workflow — `export PATH=.../opt/node22/bin:$PATH`, в ecosystem — `interpreter`. Root/sudo у юзера нет.
+- Статика: содержимое `public/` симлинкуется в веб-рут `/var/www/save-tube/data/www/save-tube.ru` — отдаёт nginx напрямую; остальное — proxy на `127.0.0.1:3000` (переключение с WP — через панель).
+- `script_stop` в appleboy/ssh-action@v1 удалён — в скрипте стоит `set -e` явно. Секреты репозитория: `SSH_PRIVATE_KEY` (deploy-ключ ed25519, пара в `~/.ssh/savetube_deploy_ed25519`), `ENV_FILE` (продовый .env; REDIS_URL — локальный `redis://localhost:6379`).
 
 ## Отложено
 
