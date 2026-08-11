@@ -1,4 +1,5 @@
-import { hasActiveSubscription, isPaymentActive } from "@/lib/payments-store";
+import { getPayment, hasActiveSubscription, isPaymentActive } from "@/lib/payments-store";
+import { activateYookassaPayment, getYookassaPayment } from "@/lib/yookassa";
 import { trackRequest } from "@/lib/metrics";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -15,10 +16,26 @@ async function handleGet(request: Request) {
     return Response.json({ message: "E-Mail указан неверно!", status: false }, { status: 400 });
   }
 
-  const active =
+  let active =
     paymentIdParam !== null
       ? await isPaymentActive(Number(paymentIdParam), email)
       : await hasActiveSubscription(email);
+
+  // Самолечение: вебхук ЮKassa мог не дойти (у тестового магазина свой вебхук,
+  // который забывают настроить) — при поллинге конкретного pending-платежа
+  // перепроверяем его в API и активируем (идемпотентно).
+  if (!active && paymentIdParam !== null) {
+    const payment = await getPayment(Number(paymentIdParam));
+    if (payment && payment.status === 0 && payment.provider === "yookassa" && payment.merchant_id) {
+      try {
+        const yk = await getYookassaPayment(payment.merchant_id);
+        await activateYookassaPayment(yk);
+        active = await isPaymentActive(Number(paymentIdParam), email);
+      } catch (error) {
+        console.error("Payment status recheck failed:", error);
+      }
+    }
+  }
 
   return Response.json(
     { status: active },

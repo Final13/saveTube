@@ -11,6 +11,7 @@ export interface Payment {
   status: 0 | 1; // 0 — ожидает оплаты, 1 — оплачен
   merchant_id: string | null;
   subscription_until: number | null; // unix ms
+  provider: string | null; // 'tbank' | 'yookassa', NULL — легаси (T-Bank)
 }
 
 function paymentsTable(): string {
@@ -82,6 +83,7 @@ interface PaymentRow {
   status: number;
   merchant_id: string | null;
   subscription_until: number | null;
+  provider: string | null;
 }
 
 function parsePayment(row: PaymentRow): Payment {
@@ -92,6 +94,7 @@ function parsePayment(row: PaymentRow): Payment {
     status: Number(row.status) === 1 ? 1 : 0,
     merchant_id: row.merchant_id ? String(row.merchant_id) : null,
     subscription_until: row.subscription_until ? Number(row.subscription_until) : null,
+    provider: row.provider ? String(row.provider) : null,
   };
 }
 
@@ -126,6 +129,7 @@ export async function getPayment(id: number): Promise<Payment | null> {
   const rows = (await db.query(
     `SELECT payment_id AS id, payment_email AS email, payment_rate_index AS rate_index,
        payment_status AS status, payment_merchant_id AS merchant_id,
+       payment_provider AS provider,
        UNIX_TIMESTAMP(payment_untiled_at) * 1000 AS subscription_until
      FROM ${paymentsTable()} WHERE payment_id = ? LIMIT 1`,
     [id],
