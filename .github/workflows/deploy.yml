@@ -17,10 +17,12 @@ jobs:
 
       # Сборка в раннере GitHub: на VPS (3.7 ГБ RAM) next build не влезает.
       # .env из секрета нужен ДО build — NEXT_PUBLIC_* вшиваются в бандл на этапе сборки.
+      # npm install, НЕ npm ci: локфайл генерился на Windows и не содержит опциональные
+      # wasm32-зависимости (@emnapi/*) — npm ci на Linux валится на их отсутствии.
       - name: Build
         run: |
           printf '%s\n' "${{ secrets.ENV_FILE }}" > .env
-          npm ci
+          npm install
           npm run build
           npm prune --omit=dev
 
