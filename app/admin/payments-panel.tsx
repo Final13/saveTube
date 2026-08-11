@@ -15,6 +15,7 @@ interface PaymentsData {
     provider: string;
     merchant_id: string | null;
     subscription_until: number | null;
+    created_at: number | null;
   }>;
   recurrent: Array<{
     id: number;
@@ -174,6 +175,7 @@ export default function PaymentsPanel() {
                   <th className="py-1 pr-4 font-medium">Сумма</th>
                   <th className="py-1 pr-4 font-medium">Провайдер</th>
                   <th className="py-1 pr-4 font-medium">Статус</th>
+                  <th className="py-1 pr-4 font-medium">Дата платежа</th>
                   <th className="py-1 font-medium">Подписка до</th>
                 </tr>
               </thead>
@@ -191,12 +193,13 @@ export default function PaymentsPanel() {
                     >
                       {p.status === 1 ? "оплачен" : "ожидает"}
                     </td>
+                    <td className="py-1.5 pr-4">{formatDate(p.created_at)}</td>
                     <td className="py-1.5">{formatDate(p.subscription_until)}</td>
                   </tr>
                 ))}
                 {data.payments.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="py-3 text-center text-slate-400">
+                    <td colSpan={7} className="py-3 text-center text-slate-400">
                       Платежей пока нет
                     </td>
                   </tr>

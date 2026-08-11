@@ -198,6 +198,7 @@ export interface PaymentListItem {
   provider: string; // 'tbank' | 'yookassa' | 'legacy'
   merchant_id: string | null;
   subscription_until: number | null; // unix ms
+  created_at: number | null; // unix ms, дата создания платежа
 }
 
 /** Последние платежи (для админки), новые первыми. */
@@ -210,7 +211,8 @@ export async function listPayments(limit = 50): Promise<PaymentListItem[]> {
     `SELECT payment_id AS id, payment_email AS email, payment_rate_index AS rate_index,
        payment_amount AS amount, payment_title AS title, payment_status AS status,
        payment_provider AS provider, payment_merchant_id AS merchant_id,
-       UNIX_TIMESTAMP(payment_untiled_at) * 1000 AS subscription_until
+       UNIX_TIMESTAMP(payment_untiled_at) * 1000 AS subscription_until,
+       UNIX_TIMESTAMP(payment_created_at) * 1000 AS created_at
      FROM ${paymentsTable()} ORDER BY payment_id DESC LIMIT ?`,
     [limit],
   )) as Array<Record<string, unknown>>;
@@ -224,6 +226,7 @@ export async function listPayments(limit = 50): Promise<PaymentListItem[]> {
     provider: row.provider ? String(row.provider) : "legacy",
     merchant_id: row.merchant_id ? String(row.merchant_id) : null,
     subscription_until: row.subscription_until ? Number(row.subscription_until) : null,
+    created_at: row.created_at ? Number(row.created_at) : null,
   }));
 }
 
@@ -237,7 +240,8 @@ export async function listPaymentsByEmail(email: string, limit = 10): Promise<Pa
     `SELECT payment_id AS id, payment_email AS email, payment_rate_index AS rate_index,
        payment_amount AS amount, payment_title AS title, payment_status AS status,
        payment_provider AS provider, payment_merchant_id AS merchant_id,
-       UNIX_TIMESTAMP(payment_untiled_at) * 1000 AS subscription_until
+       UNIX_TIMESTAMP(payment_untiled_at) * 1000 AS subscription_until,
+       UNIX_TIMESTAMP(payment_created_at) * 1000 AS created_at
      FROM ${paymentsTable()} WHERE payment_email = ? ORDER BY payment_id DESC LIMIT ?`,
     [email, limit],
   )) as Array<Record<string, unknown>>;
@@ -251,5 +255,6 @@ export async function listPaymentsByEmail(email: string, limit = 10): Promise<Pa
     provider: row.provider ? String(row.provider) : "legacy",
     merchant_id: row.merchant_id ? String(row.merchant_id) : null,
     subscription_until: row.subscription_until ? Number(row.subscription_until) : null,
+    created_at: row.created_at ? Number(row.created_at) : null,
   }));
 }
