@@ -12,6 +12,9 @@ import "./globals.css";
 const inter = Inter({
   variable: "--font-inter",
   subsets: ["latin", "cyrillic"],
+  // italic нужен для логотипа («Tube»): без него браузер рисует faux-italic,
+  // который сдвигает верх «T» вправо и логотип визуально разрывается на «Save Tube»
+  style: ["normal", "italic"],
 });
 
 export const metadata: Metadata = {
@@ -82,7 +85,7 @@ export default async function RootLayout({
       <body className="flex min-h-full flex-col font-sans">
         <ThemeProvider defaultResolvedTheme={serverResolvedTheme}>
           <Header initialLoggedIn={loggedIn} initialTheme={serverResolvedTheme} />
-          <main className="mx-auto w-full max-w-5xl flex-1 px-4">{children}</main>
+          <main className="mx-auto w-full max-w-4xl flex-1 px-4">{children}</main>
           <Footer />
         </ThemeProvider>
         <Metrika />

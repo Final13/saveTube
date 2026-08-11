@@ -9,7 +9,9 @@ const BUILTIN_NODE = "/api/proxy";
 const NODES = (process.env.NEXT_PUBLIC_PROXY_URLS ?? "")
   .split(",")
   .map((s) => s.trim().replace(/\/$/, ""))
-  .filter(Boolean);
+  // Только валидные абсолютные URL: защита от кривого значения env
+  // (напр. когда в значение вставили всю строку «NEXT_PUBLIC_PROXY_URLS=https://...»).
+  .filter((s) => s.startsWith("https://") || s.startsWith("http://"));
 
 let counter = 0;
 

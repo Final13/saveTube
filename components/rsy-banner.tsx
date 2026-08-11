@@ -130,7 +130,7 @@ export default function RsyBanner() {
         >
           {countdown > 0 ? countdown : "✕"}
         </button>
-        <div id={CONTAINER_ID} className="mx-auto max-w-5xl" />
+        <div id={CONTAINER_ID} className="mx-auto max-w-4xl" />
       </div>
     </>
   );

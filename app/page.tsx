@@ -37,7 +37,7 @@ export default function HomePage() {
         <FormTabs active="main" />
       </section>
 
-      <div className="mb-10 rounded-xl bg-slate-100 dark:bg-zinc-900 p-6 sm:p-10">
+      <div className="mb-10 rounded-xl bg-slate-100 dark:bg-zinc-900 p-4 sm:p-10">
         <section>
           <h2 className="text-2xl font-bold">О сервисе</h2>
           <div className="mt-4 space-y-4 text-zinc-600 dark:text-zinc-400">

@@ -16,6 +16,7 @@ export default function AuthForm({ onSuccess }: { onSuccess: () => void | Promis
   const [codeExpired, setCodeExpired] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [agreed, setAgreed] = useState(false);
 
   async function handleRequestCode() {
     if (loading) return;
@@ -75,7 +76,7 @@ export default function AuthForm({ onSuccess }: { onSuccess: () => void | Promis
         Вход — по одноразовому коду из письма, пароль не нужен. Если аккаунта ещё нет, он создастся
         автоматически (так же, как при первой оплате подписки).
       </p>
-      <div className="space-y-3 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950 p-4">
+      <div className="space-y-3">
         <input
           type="email"
           value={email}
@@ -105,10 +106,41 @@ export default function AuthForm({ onSuccess }: { onSuccess: () => void | Promis
         )}
         {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
 
+        {!codeSent && (
+          <label className="flex cursor-pointer items-start gap-2 text-sm text-zinc-600 dark:text-zinc-400">
+            <input
+              type="checkbox"
+              checked={agreed}
+              onChange={(e) => setAgreed(e.target.checked)}
+              className="mt-0.5 size-4 shrink-0 cursor-pointer accent-sky-600"
+            />
+            <span>
+              Входя, я соглашаюсь с{" "}
+              <a
+                href="/agreement"
+                target="_blank"
+                rel="noreferrer"
+                className="text-sky-700 transition hover:underline dark:text-sky-400"
+              >
+                Пользовательским соглашением
+              </a>{" "}
+              и{" "}
+              <a
+                href="/privacy-policy"
+                target="_blank"
+                rel="noreferrer"
+                className="text-sky-700 transition hover:underline dark:text-sky-400"
+              >
+                Политикой конфиденциальности
+              </a>
+              .
+            </span>
+          </label>
+        )}
         {!codeSent ? (
           <button
             onClick={() => void handleRequestCode()}
-            disabled={loading || !EMAIL_REGEX.test(email.trim())}
+            disabled={loading || !agreed || !EMAIL_REGEX.test(email.trim())}
             className="flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-sky-600 px-6 font-semibold text-white transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {loading && <Loader2 className="size-5 animate-spin" />}

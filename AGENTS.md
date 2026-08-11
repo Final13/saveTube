@@ -5,113 +5,103 @@
 This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` before writing any code. Heed deprecation notices.
 <!-- END:nextjs-agent-rules -->
 
-# Save-Tube — сервис скачивания видео с RuTube
+# Save-Tube — скачивание видео с RuTube
 
 Next.js 16 + React 19, App Router, Tailwind v4, lucide-react, алиас `@/`. Только ru-язык.
 
-## Как работает скачивание (не ломать без причины)
+## Скачивание (не ломать)
 
-Вся логика — в нашем приложении, сторонние сервисы не используются, кроме публичного API и CDN RuTube:
+Сторонних сервисов нет — только публичный API и CDN RuTube.
 
-1. `lib/rutube.ts` — парсинг ссылки (`/video/{id}/`, `/shorts/{id}/`, id = 32 hex), метаданные (`https://rutube.ru/api/video/{id}/`), master-плейлист (`https://rutube.ru/api/play/options/{id}/?no_404=true&referer&pver=v2&client=wdp&mq=all&av1=1` → `video_balancer.default`; в `/api/video/{id}/` поля `video_balancer` НЕТ). **Параметры `mq=all&av1=1` обязательны** — без них API отдаёт master урезанным (максимум 1080p, 1440p/2160p пропадают; так было в старом бэке). Master m3u8 дублирует каждое качество на 2 CDN (rtbcdn.ru + rutube.ru) — дедупликация по RESOLUTION, второй URL = fallback. Media m3u8 содержит ОТНОСИТЕЛЬНЫЕ пути `*.ts`.
-2. `app/api/get-video-info` — задачная модель как в старом бэке: POST создаёт задачу (`lib/tasks.ts`, in-memory, TTL 10 мин) и отвечает сразу `{task_id, status}`; если RuTube ответил в inline-бюджет (20с, env `VIDEO_INFO_INLINE_MS`) — результат приходит прямо в POST (`status:completed` + `data`), иначе 202 `pending` и клиент пингует `GET ?task_id` (1.5с, до 90с). Обработка в фоне с ретраями 5× backoff (`lib/video-info-task.ts`) через **очередь с лимитом параллелизма** `lib/task-queue.ts` (env `VIDEO_INFO_CONCURRENCY`, дефолт 4; сверх лимита — FIFO; переполнение > `VIDEO_INFO_MAX_QUEUE`, дефолт 100 → 429 «сервер перегружен»). Повторный POST того же видео получает уже созданную задачу (дедуп по videoId, индекс в `lib/tasks.ts`). HTTP-ошибки retriable (DC-бан RuTube отдаёт 404-заглушку — пробуем другие прокси), «контент недоступен» — нет (`RutubeApiError.retriable`). `app/api/get-segments` — синхронный (быстрый CDN-запрос).
-   **Serverless (Vercel, `process.env.VERCEL`):** фон после ответа не живёт, поэтому POST отвечает 202 сразу (без inline-ожидания), а выполнение драйвит poll-GET — первый poll синхронно выполняет задачу (бюджет 50с, `maxDuration: 60` в vercel.json; задача хранит videoId в `task.payload`, single-flight через `task.processing`). Poll на «чужом» инстансе → 404 → клиент пересоздаёт задачу до 2 раз (в `download-form.tsx`), бесшовно.
-3. `app/api/proxy?url=` — ОБЯЗАТЕЛЕН: CDN RuTube не отдаёт `Access-Control-Allow-Origin`, браузер сегменты напрямую не скачает. Whitelist хостов: `*.rutube.ru`, `*.rtbcdn.ru` (не расширять без необходимости).
-4. Клиент (`components/download-form.tsx`): пул воркеров (по умолчанию 2 потока, число читается из ref на лету), 3 ретрая с backoff на сегмент, склейка Blob → файл `{title}-{quality}.mp4` (контейнер реально MPEG-TS — проигрыватели его едят; настоящий муксинг в MP4 — отложенная задача).
+- `lib/rutube.ts`: ссылки `/video/{id}/`, `/shorts/{id}/` (id = 32 hex); метаданные `rutube.ru/api/video/{id}/` (поля `video_balancer` там НЕТ); master-плейлист `rutube.ru/api/play/options/{id}/?no_404=true&referer&pver=v2&client=wdp&mq=all&av1=1` → `video_balancer.default`. **`mq=all&av1=1` обязательны** — без них master урезан до 1080p. Master дублирует качества на 2 CDN (rtbcdn.ru + rutube.ru): дедуп по RESOLUTION, 2-й URL = fallback. Media m3u8 — относительные пути `*.ts`.
+- `app/api/get-video-info` — задачная модель: POST создаёт задачу (`lib/tasks.ts`, in-memory, TTL 10 мин, дедуп по videoId); успел за 20с (`VIDEO_INFO_INLINE_MS`) — сразу `completed`+`data`, иначе 202 `pending` и poll `GET ?task_id` (1.5с, до 90с). Ретраи 5× backoff (`lib/video-info-task.ts`), очередь `lib/task-queue.ts` (`VIDEO_INFO_CONCURRENCY` дефолт 4, FIFO, > `VIDEO_INFO_MAX_QUEUE` дефолт 100 → 429). HTTP-ошибки retriable (DC-бан = 404-заглушка), «контент недоступен» — нет. `app/api/get-segments` — синхронный.
+- **Serverless (`process.env.VERCEL`):** фон после ответа не живёт → POST сразу 202, выполнение драйвит poll-GET (50с, `maxDuration: 60`; videoId в `task.payload`, single-flight `task.processing`). 404 (чужой инстанс) → клиент пересоздаёт задачу до 2 раз.
+- `app/api/proxy?url=` — обязателен (CDN без CORS). Whitelist `*.rutube.ru`, `*.rtbcdn.ru` — не расширять.
+- Клиент (`components/download-form.tsx`): пул воркеров (дефолт 2, из ref на лету), 3 ретрая с backoff на сегмент, Blob → `{title}-{quality}.mp4` (реально MPEG-TS; муксинг в MP4 отложен).
 
-## SEO-решения (зафиксированы, не откатывать)
+## SEO (не откатывать)
 
-- Sitemap — ТОЛЬКО `app/sitemap.ts` (MetadataRoute, `revalidate = 3600`). Никаких файлов в public/ и кронов.
-- robots.txt — статичный `public/robots.txt` (НЕ `app/robots.ts` — конфликт со статикой). Одна секция `User-agent: *`, закрыты `/api/` и любые GET-параметры (`Disallow: /*?`). **При смене домена обновить Sitemap/Host в нём вручную** и задать `NEXT_PUBLIC_SITE_URL`.
-- `metadataBase` + title template в `app/layout.tsx`; на страницах — `alternates.canonical` на чистый URL; верификация google/yandex из env; иконка — физический файл `public/favicon.svg`.
-- Яндекс.Метрика — `components/metrika.tsx` (lazyOnload) по env `NEXT_PUBLIC_YM_ID`, цели через `lib/metrika.ts` (стаб-очередь `ym.a`).
-- Структурированные данные (JSON-LD) не используются.
+- Sitemap — только `app/sitemap.ts` (MetadataRoute, `revalidate = 3600`); без файлов в public/ и кронов.
+- robots.txt — статичный `public/robots.txt` (НЕ `app/robots.ts`): `User-agent: *`, закрыты `/api/` и `/*?`. При смене домена — обновить Sitemap/Host вручную + задать `NEXT_PUBLIC_SITE_URL`.
+- `metadataBase` + title template в `app/layout.tsx`, `alternates.canonical` на страницах, верификация google/yandex из env, иконка — файл `public/favicon.svg`.
+- Метрика — `components/metrika.tsx` (lazyOnload) по `NEXT_PUBLIC_YM_ID`, цели через `lib/metrika.ts`. JSON-LD не используется.
 
-## Темы (светлая/тёмная, зафиксировано)
+## Темы (зафиксировано)
 
-- Cookie `theme` = `light`/`dark`/`system` (365 дней, path=/, SameSite=Lax). `lib/theme.tsx` — ThemeProvider + `useTheme()` (`theme`, `resolvedTheme`, `setTheme`), при `system` слушает prefers-color-scheme.
-- `app/layout.tsx` — серверное чтение cookie (поэтому layout async, страницы стали dynamic), класс `dark`/`light` на `<html>` + `suppressHydrationWarning`, инлайн-скрипт перед `<body>` ставит класс на documentElement ДО рендера (анти-FOUC, не удалять). ThemeProvider оборачивает всё в body.
-- Tailwind v4 class-стратегия: `@custom-variant dark (&:where(.dark, .dark *))` в globals.css; базовые цвета body и `.prose-savetube` — тоже там. **Палитра — в духе playerok (зафиксировано, не откатывать):** в `@theme` переопределены `sky-*` = фирменный синий playerok (#1453FF акцент, #5286FF светлый в dark) и `zinc-950/900/50` = их фоны (#14161A тёмный фон, #282933 карточки тёмной, #F2F4F7 блоки светлой, body светлой — белый). Благодаря переопределению перекрашивается весь сайт без правок компонентов. Шапка: белая/`zinc-950` с бордером, логотип синий (`sky-600`/`sky-400`).
-- Переключатель — `components/theme-toggle.tsx` в шапке (pill-свитчер как на playerok: ползунок с солнцем/луной со звёздами, клик = light↔dark, `role="switch"`). Положение ползунка — через SSR-проп `initialTheme` из layout (как `initialLoggedIn` в шапке): при явной куке рендерится сразу верно, при system/без куки ползунок появляется после mount сразу в конечной позиции — дёрганья нет. Шапка (`components/header.tsx`) также получает `initialLoggedIn` из layout (`getSession()`) — «Войти»/«Кабинет» не мигает при перезагрузке.
-- Курсор-рука на интерактивных элементах — глобальным CSS-правилом в globals.css (`button:not(:disabled)`, `[role="switch"]`, `select` → pointer; disabled → not-allowed). Tailwind v4 не ставит pointer на button по умолчанию.
-- Новым компонентам и страницам — обязательно `dark:`-варианты классов. Светлую тему не менять.
+- Cookie `theme` = `light`/`dark`/`system` (365 дней). `lib/theme.tsx` — ThemeProvider + `useTheme()`, при `system` слушает prefers-color-scheme.
+- `app/layout.tsx` — серверное чтение cookie (поэтому layout async, страницы dynamic), класс на `<html>` + `suppressHydrationWarning` + инлайн-скрипт до рендера (анти-FOUC, не удалять). ThemeProvider оборачивает body.
+- Tailwind v4 class-стратегия: `@custom-variant dark` в globals.css. **Палитра playerok (не откатывать):** в `@theme` переопределены `sky-*` (#1453FF акцент, #5286FF в dark) и `zinc-950/900/50` (#14161A фон, #282933 карточки, #F2F4F7 блоки светлой) — перекрашивает весь сайт без правок компонентов.
+- Переключатель `components/theme-toggle.tsx` (pill, `role="switch"`): позиция ползунка — SSR-проп `initialTheme` из layout. Шапка получает `initialLoggedIn` из layout (`getSession()`) — «Войти»/«Кабинет» не мигает.
+- cursor-pointer на интерактивных — глобальным правилом в globals.css. Новым компонентам — обязательно `dark:`-варианты. Светлую тему не менять.
 
 ## Env
 
-См. `.env.example`: `NEXT_PUBLIC_SITE_URL` (обязателен в проде — metadataBase/sitemap/canonical), `YANDEX_VERIFICATION`, `GOOGLE_VERIFICATION`, `NEXT_PUBLIC_YM_ID`, `TBANK_TERMINAL_KEY`, `TBANK_PASSWORD`, `MYSQL_HOST`/`MYSQL_PORT`/`MYSQL_DATABASE`/`MYSQL_USER`/`MYSQL_PASSWORD` + `MYSQL_TABLE_PREFIX` (платежи и метрики; без них платежи/метрики отключены), `PROXY_TOKEN_SECRET` (обязателен в проде — без него прокси отдаёт 500), `NEXT_PUBLIC_RSY_ID` (без него РСЯ-баннер не рендерится), `RUTUBE_API_PROXY` (только для serverless — см. ниже), `SESSION_SECRET` (iron-session ЛК), `REDIS_URL` (OTP-коды входа в ЛК; без него auth-роуты отвечают 503, оплата не ломается), `SMTP_HOST`/`SMTP_PORT`/`SMTP_USER`/`SMTP_PASS`/`SMTP_FROM` (письма ЛК; без них письма тихо пропускаются).
+Полный список — `.env.example`. Поведение при отсутствии: `NEXT_PUBLIC_SITE_URL` — обязателен в проде (metadataBase/sitemap/canonical); `MYSQL_*` — платежи/метрики отключены; `PROXY_TOKEN_SECRET` — прокси 500 в проде; `NEXT_PUBLIC_RSY_ID` — нет РСЯ-баннера; `REDIS_URL` — auth-роуты 503 (оплата работает); `SMTP_*` — письма тихо пропускаются.
 
-## Деплой на serverless (Vercel) — важно
+## Serverless (Vercel)
 
-**API rutube.ru банит дата-центровые IP** (Vercel/AWS → 404/403-заглушка), а CDN `*.rtbcdn.ru` — нет (проверено: сегменты и m3u8 с Vercel качаются). Поэтому на Vercel работает всё, кроме 2 текстовых API-запросов на видео — они идут через прокси с чистым IP:
+- **API rutube.ru банит DC-IP** (Vercel/AWS → 404/403-заглушка), CDN `*.rtbcdn.ru` — нет. Поэтому только текстовые API-запросы идут через прокси: `rutubeApiFetch()` в `lib/rutube.ts` + `RUTUBE_API_PROXY=http://user:pass@host:port` (undici ProxyAgent, любой дешёвый RU-прокси, ~5 КБ/конвертацию). Плейлисты и сегменты — всегда напрямую.
+- In-memory лимиты/кеши — per-instance. Прод-MySQL на localhost VPS → на Vercel недоступна (платежи отвечают «сервис недоступен»). Vercel = витрина со скачиванием, прод = VPS.
 
-- `lib/rutube.ts`: `rutubeApiFetch()` — если задан `RUTUBE_API_PROXY=http://user:pass@host:port`, API-запросы идут через undici `ProxyAgent`. Плейлисты и сегменты — всегда напрямую (иначе весь видео-трафик пошёл бы через платный прокси).
-- Прокси нужен любой HTTP-с прокси с не-DC IP (подойдёт самый дешёвый RU-прокси: трафик ~5 КБ на конвертацию).
-- Остальные serverless-ограничения в силе: in-memory лимиты и кеши — per-instance. Платежи/метрики на MySQL работают и на Vercel, если база доступна из интернета (на проде MySQL на localhost VPS → для Vercel недоступна, там платежи отвечают «сервис недоступен»). Vercel = витрина со скачиванием, прод = VPS.
+## Платежи T-Bank (не ломать)
 
-## Платежи T-Bank (не ломать без причины)
+- Тарифы `lib/rates.ts`: 7д/39₽, 30д/99₽, 365д/299₽ — менять только осознанно.
+- `lib/tbank.ts`: подпись = скалярные поля + `Password`, сортировка ключей case-insensitive, конкатенация, sha256. `Init` с чеком 54-ФЗ (УСН доход, `DATA.PaymentMethod=QR:true`), `GetState` — перепроверка. На dev TLS-проверка банка отключена (антивирус MITM), в проде строгая.
+- Вебхук `app/api/payment/notification`: подпись → `CONFIRMED` → перепроверка `GetState` → идемпотентный `markPaid`. Ответ строго `"OK"`/`"ERROR"` (ERROR = банк пришлёт повтор).
+- Хранилище `lib/payments-store.ts` (MySQL, `lib/mysql.ts` globalThis-синглтон): таблица `{MYSQL_TABLE_PREFIX}payments` (дефолт `wp_`), колонки от старого бэкенда — старые подписки распознаются без миграции. `payment_amount` в РУБЛЯХ (в банк — копейки), `OrderId` = `payment_id`. Таблица самосоздаётся.
+- Фронт `components/premium-modal.tsx`: тарифы → email → `GET /api/payment` → редирект на `PaymentURL`, поллинг `/api/payment/status` 5с×25. Cookie `user_email` (365д) ставит status-эндпоинт, download-form автопроверяет по ней. **Перемонтирование модалки по `key` и открытие по `?success`/`?error` через setTimeout — осознанные обходы линта, не «чинить».**
+- Потоки `+/-` видны ТОЛЬКО при активной подписке; бесплатным — «⚡ Ускорить» (модалка). Шапка: «Войти» → `/account`; при подписке — «⚡ Премиум» → `/account`.
 
-- Тарифы в `lib/rates.ts`: 7д/39₽, 30д/99₽, 365д/299₽ — как на проде, менять только осознанно.
-- `lib/tbank.ts` — подпись: скалярные поля + `Password`, сортировка ключей case-insensitive, конкатенация значений, sha256. `Init` с чеком 54-ФЗ (УСН доход, `DATA.PaymentMethod=QR:true`), `GetState` для перепроверки. На dev (`NODE_ENV !== production`) проверка TLS-сертификата банка отключена (antivirus MITM ломает fetch локально); в проде — строгая.
-- Вебхук `app/api/payment/notification`: проверка подписи → `CONFIRMED` → перепроверка через `GetState` (защита от подделки) → идемпотентный `markPaid`. Ответ банку строго `"OK"`/`"ERROR"` (ERROR = банк пришлёт повтор).
-- Хранилище `lib/payments-store.ts` — MySQL (serverless-mysql, `lib/mysql.ts`, globalThis-синглтон), таблица `{MYSQL_TABLE_PREFIX}payments` (дефолт `wp_`). Колонки унаследованы от старого бэкенда (`payment_id/payment_email/payment_rate_index/payment_amount/payment_title/payment_status/payment_merchant_id/payment_untiled_at`) — существующие оплаченные подписки в общей базе распознаются без миграции; `payment_amount` хранит РУБЛИ (как старые записи), в банк уходят копейки. `OrderId` = `payment_id`. Таблица создаётся сама, только если её нет.
-- Фронт: `components/premium-modal.tsx` (тарифы → email → `GET /api/payment` → редирект на `PaymentURL`; поллинг `/api/payment/status` 5с×25; экраны оплаты/проверки «я уже купил»). Cookie `user_email` на 365д ставит status-эндпоинт, `download-form` автопроверяет подписку по ней. Модалка перемонтируется по `key` — так обходится линт-правило set-state-in-effect, не «чинить».
-- Потоки загрузки (как в оригинале): `+/-` видны ТОЛЬКО при активной подписке; бесплатным — кнопка «⚡ Ускорить» (открывает модалку). Шапка (`components/header.tsx`, клиентская): «Войти» → ссылка на `/account`; при активной подписке — значок «⚡ Премиум» → `/account`.
-- `?success`/`?error` (SuccessURL/FailURL банка) открывают модалку через setTimeout — тоже осознанный обход линта.
+## ЮKassa + автопродление (зафиксировано)
 
-## ЮKassa — второй провайдер + автопродление (зафиксировано)
-
-- **Переключатель провайдера** — в `/admin` («Оплата»): `tbank` (разовые) ↔ `yookassa` (рекуррент). Хранится в `{prefix}app_settings` (`lib/settings-store.ts`), влияет только на НОВЫЕ платежи. Активные подписки живут в `{prefix}payments` и работают независимо от провайдера — поэтому туда пишут оба (колонка `payment_provider`: NULL = легаси T-Bank).
-- `lib/yookassa.ts` — клиент API v3 на голом fetch (Basic `YOOKASSA_SHOP_ID:YOOKASSA_SECRET_KEY`, `Idempotence-Key` на создание). Первый платёж — redirect + `save_payment_method: true` + чек 54-ФЗ (УСН, vat_code 1). Контракт `/api/payment` для фронта одинаковый: `{url, payment_id}`.
-- Вебхук `app/api/payment/yookassa-notification` (URL для кабинета ЮKassa: `https://<домен>/api/payment/yookassa-notification`): вебхуку НЕ доверяем — статус перепроверяем через `getYookassaPayment`, активация идемпотентна (`markPaid`), продление от `max(now, текущая дата окончания)`. Ответ всегда 200, кроме временной недоступности API (502 = повтор).
-- Рекуррент: `{prefix}recurrent_subscriptions` (`lib/recurrent-store.ts`, одна запись на email). Автосписания — `app/api/cron/billing` (системный cron раз в час: `curl -H "Authorization: Bearer $CRON_SECRET" <домен>/api/cron/billing`): списывает только пока провайдер = yookassa, при неудаче — ретрай через сутки.
-- **Важно:** рекуррент работает только если в магазине ЮKassa включены повторные платежи (через менеджера ЮKassa). Без этого `save_payment_method: true` отклоняется.
-- Админка `/admin` — раздел «Оплата» (`app/admin/payments-panel.tsx`): переключатель, список автопродлений, последние 50 платежей. API — `app/api/admin/payments` (GET/POST, только админ).
+- Переключатель провайдера в `/admin` («Оплата»): `tbank` (разовые) ↔ `yookassa` (рекуррент), в `{prefix}app_settings` (`lib/settings-store.ts`), влияет только на новые платежи. Подписки обоих провайдеров — в `{prefix}payments` (`payment_provider`: NULL = легаси T-Bank).
+- `lib/yookassa.ts` — API v3 на fetch (Basic `YOOKASSA_SHOP_ID:YOOKASSA_SECRET_KEY`, `Idempotence-Key`). Первый платёж: redirect + `save_payment_method: true` + чек 54-ФЗ (vat_code 1). Контракт `/api/payment` общий: `{url, payment_id}`.
+- Вебхук `app/api/payment/yookassa-notification`: не доверяем — перепроверка `getYookassaPayment`, идемпотентный `markPaid`, продление от `max(now, текущий конец)`. Ответ всегда 200, кроме недоступности API (502 = повтор).
+- Рекуррент: `{prefix}recurrent_subscriptions` (`lib/recurrent-store.ts`, одна запись на email). Автосписания — `app/api/cron/billing` (системный cron раз в час, `Authorization: Bearer $CRON_SECRET`): только при провайдере yookassa, неудача → ретрай через сутки. **Требует включённых повторных платежей в магазине ЮKassa (через менеджера).**
+- Админка «Оплата» (`app/admin/payments-panel.tsx` + `app/api/admin/payments`): переключатель, автопродления, последние 50 платежей.
 
 ## Авторизация и ЛК (OTP по email, зафиксировано)
 
-- **Паролей больше НЕТ нигде** (bcryptjs удалён, `lib/auth/password.ts` удалён). Колонка `password_hash` в `{prefix}app_users` осталась от старой модели, мигрирована в NULL через INFORMATION_SCHEMA (паттерн из payments-store) и игнорируется — старые хеши не используются.
-- Юзер создаётся автоматически при первой оплате в `/api/payment` — БЕЗ пароля, сессия ставится сразу на 1 год, welcome-письмо (без пароля, «кабинет создан, вы уже вошли») через `after()` (SMTP-ошибки не ломают оплату). Если юзер с таким email уже есть — НЕ логиним (вход только по коду из письма).
-- Вход и регистрация вне покупки — единый OTP-флоу (оба роута под `trackRequest`, rate-limit 5/мин по IP):
-  - `POST /api/auth/request-code {email}` — 6-значный код в Redis `otp:{email}` (EX 300), письмо с кодом через `after()`. Ответ всегда `{ok:true}` (анти-перебор). Антиспам по email: `otp-sent:{email}` SET NX EX 60 — чаще раза в минуту → 429 «Код уже отправлен, проверьте почту.».
-  - `POST /api/auth/verify-code {email, code}` — код верен: юзер есть? вход : создаём юзера; `setSession` на год; код удаляется (одноразовый). Неверен/просрочен → 400 `{message, expired:true}` — фронт показывает «код просрочен» и «Выслать код повторно».
-  - `POST /api/auth/logout`, `GET /api/auth/me` (401 без сессии) — без изменений. Роутов `login`/`forgot-password` больше нет.
-- Redis — `lib/redis.ts` (ioredis, globalThis-синглтон, lazy connect), env `REDIS_URL` (формат `redis://[:password@]host:port`; локально docker `savetube-redis`, `redis://localhost:6379`). **Без REDIS_URL auth-роуты отвечают 503 «Сервис временно недоступен»** (не падают), оплата от Redis не зависит.
-- Сессия — iron-session (`lib/auth/session.ts`), cookie `savetube_session` на 1 год, httpOnly, sameSite lax, secure в проде, секрет `SESSION_SECRET`. Юзеры — `lib/auth/user-store.ts`, таблица `{prefix}app_users` (НЕ `{prefix}users` — база WordPress-совместимая): id CHAR(36) UUID, email UNIQUE (lower-case), created_at; автосоздание как у recurrent-store.
-- ЛК `/account` — ТОЛЬКО по сессии: нет сессии → OTP-форма (шаг 1: email + «Получить код»; шаг 2: код 6 цифр + «Войти»; при expired — «Выслать код повторно»); есть → статус подписки, автопродление с картой и «Отвязать карту», история платежей, «Выйти». `/api/account` и `/api/account/unlink` берут email из сессии, без неё — 401. Cookie `user_email` остаётся — её использует download-form для автопроверки подписки, НЕ путать с сессией.
-- Отвязка карты: `deleteRecurrent` выполняется всегда, DELETE способа оплаты в ЮKassa — best-effort (при невключённом рекурренте там 405, ошибку игнорируем). Подписка действует до оплаченной даты.
-- Письма (`lib/email.ts`, nodemailer, `SMTP_*`): welcome (без пароля, ссылка на /account), OTP (`sendOtpEmail`, крупный код, «действует 5 минут»), payment-success (тариф + «активна до»; шлётся из обоих вебхуков и крона продлений только при реальной активации `markPaid` → дублей при повторах вебхука нет, через `after()`, ошибки глушим). Без `SMTP_*` письма тихо пропускаются. На dev (`NODE_ENV !== production`) TLS-проверка SMTP отключена (антивирус MITM), в проде строгая — как в lib/tbank.ts.
-- Почта поддержки — `s@save-tube.ru` (`SUPPORT_EMAIL` в `lib/site.ts`).
+- **Паролей НЕТ.** Колонка `password_hash` в `{prefix}app_users` — легаси, игнорируется.
+- Юзер создаётся при первой оплате в `/api/payment`: сессия сразу на 1 год + welcome-письмо через `after()` (SMTP-ошибки не ломают оплату). Email уже есть — НЕ логиним (вход только по коду).
+- OTP-флоу (оба роута под `trackRequest`, rate-limit 5/мин по IP):
+  - `POST /api/auth/request-code` — 6-значный код в Redis `otp:{email}` EX 300, письмо через `after()`, ответ всегда `{ok:true}` (анти-перебор). Антиспам `otp-sent:{email}` NX EX 60 → 429 «Код уже отправлен».
+  - `POST /api/auth/verify-code` — код верен: вход или создание юзера, `setSession` на год, код одноразовый. Неверен/просрочен → 400 `{expired:true}` → фронт: «код просрочен» + «Выслать повторно».
+  - `logout`/`me` (401 без сессии). Роутов `login`/`forgot-password` нет.
+- Redis — `lib/redis.ts` (ioredis, globalThis-синглтон, lazy), `REDIS_URL` (локально docker `savetube-redis`, `redis://localhost:6379`). Без него auth → 503, оплата не зависит.
+- Сессия — iron-session (`lib/auth/session.ts`), cookie `savetube_session` на 1 год, секрет `SESSION_SECRET`. Юзеры — `{prefix}app_users` (НЕ `users`, база WP-совместимая): id UUID, email UNIQUE lower-case.
+- ЛК `/account` только по сессии: нет → OTP-форма; есть → подписка, автопродление, «Отвязать карту», история, «Выйти». `/api/account*` без сессии — 401. Cookie `user_email` — для download-form, НЕ путать с сессией.
+- Отвязка карты: `deleteRecurrent` всегда, DELETE в ЮKassa — best-effort (405 игнорируем). Подписка действует до оплаченной даты.
+- Письма (`lib/email.ts`, nodemailer): welcome, OTP (5 мин), payment-success — только при реальной активации `markPaid` (дублей при повторах вебхука нет), через `after()`, ошибки глушим. На dev TLS-проверка SMTP отключена. Поддержка — `s@save-tube.ru` (`SUPPORT_EMAIL` в `lib/site.ts`).
 
-## Защита от злоупотреблений (зафиксировано)
+## Защита (зафиксировано)
 
-- worker_threads/Redis из старого бэкенда не нужны: задачи get-video-info — in-memory (`lib/tasks.ts`), кеш — in-memory TTL (`lib/cache.ts`, на серверless заменить на Redis с тем же интерфейсом). Очередь задач — своя in-memory (`lib/task-queue.ts`, лимит параллелизма + FIFO + отказ при переполнении), worker_threads специально не тянем (каждый воркер старого бэка жрал 300-400 МБ).
-- `lib/rate-limit.ts` — скользящее окно по IP + счётчик concurrency. Лимиты: `get-video-info` 10/мин, `get-segments` 20/мин, прокси 16 одновременных стримов на IP (= MAX_THREADS на клиенте; слот освобождается в `finally` стрима).
-- Кеши: `get-video-info` 55 мин, `get-segments` (md5) 30 мин — чтобы не дёргать RuTube на каждый запрос.
-- Прокси закрыт HMAC-токеном (`lib/proxy-token.ts`, `${exp}.${sig}`, TTL 3ч): выдаёт `get-segments`, клиент шлёт `&t=`. Без валидного токена — 403. Плюс whitelist хостов (см. выше).
+- Задачи и кеши — in-memory (`lib/tasks.ts`, `lib/cache.ts` TTL). Очередь своя (`lib/task-queue.ts`); worker_threads не тянем (воркер старого бэка жрал 300-400 МБ).
+- `lib/rate-limit.ts`: get-video-info 10/мин, get-segments 20/мин, прокси 16 одновременных стримов/IP (слот освобождается в `finally` стрима).
+- Кеши: get-video-info 55 мин, get-segments 30 мин.
+- Прокси закрыт HMAC-токеном (`lib/proxy-token.ts`, TTL 3ч): выдаёт `get-segments`, клиент шлёт `&t=`, без токена — 403.
 
-## Масштабирование: внешние прокси-ноды
+## Прокси-ноды (масштабирование)
 
-Когда упрётся полоса основного сервера — сегментный трафик выносится на отдельные VPS:
+- `proxy-node/server.js` — голый Node.js, ноль зависимостей: whitelist, 16 стримов/IP, CORS (`PROXY_NODE_ORIGIN`), `/health`. **Токена НЕТ (решение владельца): ноды открыты всем.** Логика зеркалит `app/api/proxy/route.ts` кроме авторизации — менять синхронно.
+- Клиент выбирает ноду в `lib/proxy-nodes.ts` из `NEXT_PUBLIC_PROXY_URLS` (URL через запятую, путь `/api/v1/proxy` под их nginx): round-robin, на ретрае — следующая нода. **Встроенный `/api/proxy` — fallback, только когда ВСЕ ноды отказали** (`MAX_RETRIES` = 4). Пустой список — только встроенный.
+- Задеплоены (2026-08): proxy1=.83, proxy2=.82, proxy3=.81 (подсеть 157.22.192.x, pm2 `proxy-node`, порт 3000, код `/root/nodejs/proxy_server`). proxy4/5.save-tube.ru — мёртвые хосты, не использовать. `PROXY_NODE_ORIGIN` — список origin'ов (CORS — echo из списка); в nginx `add_header Access-Control-*` убраны — CORS отдаёт ТОЛЬКО нода. `/health` снаружи закрыт nginx'ом.
+- Поднятие ноды: `proxy-node/` на VPS → `PORT=3100 PROXY_NODE_ORIGIN='*' pm2 start server.js --name proxy-node` → поддомен с TLS → URL в `NEXT_PUBLIC_PROXY_URLS` + пересборка. Принимает пути `/`, `/api/proxy`, `/api/v1/proxy`.
+- Секреты не коммитить: `.env*`, `data/`. Старый бэкенд (PHP, креды в коде) — вне репо, в загрузках (`Downloads/Telegram Desktop/Архив (2)`, `Архив (3)`).
 
-- `proxy-node/server.js` — самодостаточная нода на голом Node.js (ноль зависимостей): whitelist хостов, лимит 16 стримов/IP, CORS (`PROXY_NODE_ORIGIN`, на проде `*`), `/health`. **Токена НЕТ (решение владельца, как в старом бэке): ноды открыты всем** — защита только whitelist + лимит стримов. Логика зеркалит `app/api/proxy/route.ts`, КРОМЕ авторизации (встроенный прокси — с HMAC-токеном) — менять остальное синхронно.
-- Клиент выбирает ноду в `lib/proxy-nodes.ts` из `NEXT_PUBLIC_PROXY_URLS` (базовые URL через запятую; заданы `https://proxy1.save-tube.ru/api/v1/proxy,…proxy2…,…proxy3…` — путь `/api/v1/proxy` под их nginx): round-robin, на ретрае — следующая нода (failover автоматический). **Встроенный `/api/proxy` — fallback только когда ВСЕ ноды отказали в серии попыток** (`retry >= числа нод`; `MAX_RETRIES` = 4: попытки 1-3 — три ноды, 4-я — основной сервер). Пустой список — только встроенный (локальная разработка).
-- **Ноды задеплоены (2026-08): proxy1=.83, proxy2=.82, proxy3=.81** (подсеть 157.22.192.x, root-доступ одинаковый, pm2 `proxy-node`, порт 3000, код `/root/nodejs/proxy_server`, старый — в `proxy_server.bak`). proxy4/5.save-tube.ru — СТАРЫЕ мёртвые хосты (155.212.175.x), не использовать и не путать. `PROXY_NODE_ORIGIN` на нодах списком: `https://save-tube.ru,https://www.save-tube.ru,http://localhost:3000,http://localhost:3001` (CORS — echo origin из списка). Из nginx-конфигов убраны `add_header Access-Control-*` (бэкапы `.bak-cors`) — CORS отдаёт ТОЛЬКО нода, дубли ACAO ломают fetch. `/health` снаружи недоступен (nginx проксирует только `/api/v1/proxy`).
-- Поднятие ноды: скопировать `proxy-node/` на VPS → `PORT=3100 PROXY_NODE_ORIGIN='*' pm2 start server.js --name proxy-node` → повесить поддомен (nginx/caddy с TLS) → добавить URL в `NEXT_PUBLIC_PROXY_URLS` основного приложения и пересобрать. Нода открытая (токен не нужен); принимает пути `/`, `/api/proxy`, `/api/v1/proxy` — под существующий nginx подходит без правки location.
-- Секреты в репо не коммитить: `.env*`, `data/`. Старый бэкенд (PHP/воркеры/прокси-ноды, с кредами в коде) лежит вне репо — в загрузках пользователя (`Downloads/Telegram Desktop/Архив (2)`, `Архив (3)`).
+## РСЯ
 
-## Реклама РСЯ
-
-`components/rsy-banner.tsx` — блоки `R-A-{NEXT_PUBLIC_RSY_ID}-{4..8}`, ротация 30с, крестик после 5с, скрыт при ширине <830px. id партнёра 14782353 уже в `.env.example`/`.env.local`.
+`components/rsy-banner.tsx`: блоки `R-A-{NEXT_PUBLIC_RSY_ID}-{4..8}`, ротация 30с, крестик после 5с, скрыт при ширине <830px. id партнёра 14782353.
 
 ## Админка метрик (/admin)
 
-- Доступ: email из `ADMIN_EMAILS` + ключ `ADMIN_KEY` (форма на `/admin`); cookie `admin_session` = HMAC-подпись на ADMIN_KEY, 7 дней, httpOnly. **Без ADMIN_KEY админка закрыта полностью.** Логин rate-limit'ится (5/мин по IP). Логика — `lib/admin-auth.ts`, проверка везде через `getAdminEmail()`.
-- Сбор: обёртка `trackRequest(route, request, handler)` из `lib/metrics.ts` — стоит на всех API-роутах (включая вебхук и admin-login; новые роуты — оборачивать так же). Замеряет route/ip/status/ms, пишет fire-and-forget.
-- Хранилище: `lib/metrics-store.ts` — MySQL, таблица `{MYSQL_TABLE_PREFIX}request_metrics`, автоочистка старше 3 дней раз в час при записи. Без настроенной MySQL запись — no-op, дашборд показывает нули.
-- Отдача: `GET /api/admin/metrics?window=15m|1h|6h|24h|3d` — summary, таймсерия по бакетам, топ IP, подозрительные IP (много 429/403 = атаки/абьюз), статистика роутов, live (активные стримы из `getConcurrencySnapshot()` в rate-limit.ts + очередь задач из `getTaskQueueSnapshot()` в task-queue.ts + аптайм).
-- Дашборд `app/admin/metrics-dashboard.tsx` — автообновление 30с, SVG-график без внешних зависимостей (recharts специально не тянем). Страница `force-dynamic` + `robots: noindex`, в robots.txt `Disallow: /admin`.
+- Доступ: email из `ADMIN_EMAILS` + ключ `ADMIN_KEY`; cookie `admin_session` = HMAC на ADMIN_KEY, 7 дней. **Без ADMIN_KEY закрыта полностью.** Логин rate-limit 5/мин. `lib/admin-auth.ts`, проверка везде — `getAdminEmail()`.
+- Сбор: `trackRequest(route, request, handler)` из `lib/metrics.ts` — на ВСЕХ API-роутах (новые — тоже оборачивать): route/ip/status/ms, fire-and-forget.
+- Хранилище `lib/metrics-store.ts`: MySQL `{prefix}request_metrics`, автоочистка > 3 дней. Без MySQL — no-op, дашборд показывает нули.
+- `GET /api/admin/metrics?window=15m|1h|6h|24h|3d`: summary, таймсерия, топ/подозрительные IP (много 429/403), статистика роутов, live (стримы из `getConcurrencySnapshot()` + очередь из `getTaskQueueSnapshot()` + аптайм).
+- Дашборд `app/admin/metrics-dashboard.tsx`: автообновление 30с, свой SVG (recharts не тянем). Страница `force-dynamic` + `noindex`, в robots.txt `Disallow: /admin`.
 
-## Отложено (следующие итерации)
+## Отложено
 
-- MP3-конвертация (ffmpeg.wasm или серверная), мультиязычность — не было запроса. MP3 упоминается только в текстах (как на проде).
+- MP3-конвертация, мультиязычность (MP3 упоминается только в текстах).
 - Настоящий муксинг TS→MP4.

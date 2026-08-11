@@ -43,10 +43,12 @@ export default function Header({
 
   return (
     <header className="sticky top-0 z-40 border-b border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
-      <div className="mx-auto flex h-16 max-w-5xl items-center justify-between px-4">
+      <div className="mx-auto flex h-16 max-w-4xl items-center justify-between px-4">
         <Link href="/" className="flex items-center text-2xl text-sky-600 dark:text-sky-400">
           <span className="font-bold">Save</span>
-          <span className="italic">Tube</span>
+          {/* -ml-1 сближает «Tube» со «Save»: у курсива верх «T» уходит вправо,
+              и без сдвига логотип визуально разрывается на два слова */}
+          <span className="-ml-1 italic">Tube</span>
         </Link>
         <div className="flex items-center gap-1">
           <ThemeToggle initialTheme={initialTheme} />
