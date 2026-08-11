@@ -1,0 +1,73 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create archive
+        run: |
+          printf '%s\n' "${{ secrets.ENV_FILE }}" > deploy.env
+          tar -czf /tmp/deploy.tar.gz \
+            --exclude=node_modules \
+            --exclude=.git \
+            --exclude=.next \
+            --exclude=.env \
+            --exclude=.env.local \
+            --exclude=.playwright-mcp \
+            --exclude=proxy-node \
+            .
+          cp /tmp/deploy.tar.gz .
+
+      - name: Upload archive to server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: 157.22.192.87
+          username: save-tube
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: "deploy.tar.gz"
+          target: "/tmp"
+
+      - name: Deploy on server
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 157.22.192.87
+          username: save-tube
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script_stop: true
+          script: |
+            mkdir -p /var/www/save-tube/data/savetube
+            cd /var/www/save-tube/data/savetube
+
+            # Ролling-бэкап текущей сборки (откат при неудачном билде)
+            rm -rf .next_bak
+            [ -d .next ] && mv .next .next_bak
+
+            # Чистим старые исходники, node_modules оставляем для быстрой установки
+            find . -mindepth 1 -maxdepth 1 ! -name 'node_modules' ! -name '.next_bak' -exec rm -rf {} + 2>/dev/null
+
+            tar -xzf /tmp/deploy.tar.gz
+            rm -f /tmp/deploy.tar.gz
+            mv deploy.env .env
+
+            npm install
+
+            if npm run build; then
+              rm -rf .next_bak
+            else
+              # Билд упал — возвращаем прошлую сборку, сайт продолжает работать
+              rm -rf .next
+              [ -d .next_bak ] && mv .next_bak .next
+              exit 1
+            fi
+
+            # Линкуем public/ в веб-рут домена: статику отдаёт nginx напрямую
+            find /var/www/save-tube/data/www/save-tube.ru -maxdepth 1 -type l -exec rm -f {} \;
+            find /var/www/save-tube/data/savetube/public -maxdepth 1 -mindepth 1 -exec bash -c 'ln -sf "$1" "/var/www/save-tube/data/www/save-tube.ru/$(basename "$1")"' _ {} \;
+
+            pm2 startOrReload ecosystem.config.js --update-env

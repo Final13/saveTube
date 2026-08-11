@@ -101,6 +101,12 @@ Next.js 16 + React 19, App Router, Tailwind v4, lucide-react, алиас `@/`. �
 - `GET /api/admin/metrics?window=15m|1h|6h|24h|3d`: summary, таймсерия, топ/подозрительные IP (много 429/403), статистика роутов, live (стримы из `getConcurrencySnapshot()` + очередь из `getTaskQueueSnapshot()` + аптайм).
 - Дашборд `app/admin/metrics-dashboard.tsx`: автообновление 30с, свой SVG (recharts не тянем). Страница `force-dynamic` + `noindex`, в robots.txt `Disallow: /admin`.
 
+## CI/CD (GitHub Actions → VPS 157.22.192.87, юзер save-tube)
+
+- Деплой по push в main: `.github/workflows/deploy.yml` (паттерн CanvasKit/nextjs): tar без node_modules/.next → scp → на сервере распаковка в `/var/www/save-tube/app`, `.env` из секрета `ENV_FILE`, `npm install && npm run build` (падение билда — откат на `.next_bak`), `pm2 startOrReload ecosystem.config.js` (процесс `savetube`, порт 3000).
+- Статика: содержимое `public/` симлинкуется в веб-рут `/var/www/save-tube/www` — отдаёт nginx напрямую; остальное — proxy_pass на `127.0.0.1:3000`.
+- Секреты репозитория: `SSH_PRIVATE_KEY` (deploy-ключ ed25519, пара лежит у пользователя в `~/.ssh/savetube_deploy_ed25519`), `ENV_FILE` (продовый .env).
+
 ## Отложено
 
 - MP3-конвертация, мультиязычность (MP3 упоминается только в текстах).
