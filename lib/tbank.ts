@@ -1,5 +1,5 @@
 import { createHash } from "crypto";
-import { Agent, fetch as undiciFetch } from "undici";
+import { Agent, ProxyAgent, fetch as undiciFetch } from "undici";
 import { SITE_URL } from "@/lib/site";
 
 // Интеграция T-Bank (Tinkoff API v2): создание платежа (Init) и проверка статуса (GetState).
@@ -9,6 +9,11 @@ import { SITE_URL } from "@/lib/site";
 // На dev-машине TLS до securepay.tinkoff.ru может перехватываться антивирусом
 // (self-signed cert в цепочке → fetch падает). Для локальной разработки проверка
 // сертификата отключена (как CURLOPT_SSL_VERIFYPEER=false в старом бэке); в проде — строгая.
+//
+// securepay.tinkoff.ru рвёт соединения с зарубежных дата-центровых IP (Vercel fra1 →
+// "fetch failed"; прод на VPS с российским IP работает напрямую). Как и для RuTube API,
+// обход — прокси TBANK_API_PROXY. Прокси видит только TLS-туннель: пароль терминала
+// не передаётся (участвует лишь в sha256-подписи).
 
 const API_URL = "https://securepay.tinkoff.ru/v2";
 
@@ -16,6 +21,16 @@ const devInsecureAgent =
   process.env.NODE_ENV !== "production"
     ? new Agent({ connect: { rejectUnauthorized: false } })
     : undefined;
+
+// http://user:pass@host:port, можно несколько через запятую (round-robin + ретрай
+// со следующим, как у RUTUBE_API_PROXY). Пусто — прямое соединение.
+const tbankProxyAgents = (process.env.TBANK_API_PROXY ?? "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean)
+  .map((url) => new ProxyAgent(url));
+
+let tbankProxyCounter = 0;
 
 const TERMINAL_KEY = () => process.env.TBANK_TERMINAL_KEY ?? "";
 const PASSWORD = () => process.env.TBANK_PASSWORD ?? "";
@@ -48,9 +63,31 @@ async function tbankRequest<T>(method: string, payload: Record<string, unknown>)
     signal: AbortSignal.timeout(15_000),
     cache: "no-store",
   } as const;
-  const res = devInsecureAgent
-    ? await undiciFetch(`${API_URL}/${method}`, { ...init, dispatcher: devInsecureAgent })
-    : await fetch(`${API_URL}/${method}`, init);
+
+  // Локальный dev: напрямую, без проверки TLS (антивирусный MITM)
+  if (devInsecureAgent) {
+    const res = await undiciFetch(`${API_URL}/${method}`, { ...init, dispatcher: devInsecureAgent });
+    if (!res.ok) throw new Error(`T-Bank недоступен (HTTP ${res.status}).`);
+    return res.json() as Promise<T>;
+  }
+
+  // Serverless: через RU-прокси; сетевая ошибка — одна попытка со следующим из списка
+  if (tbankProxyAgents.length > 0) {
+    let lastError: unknown;
+    for (let attempt = 0; attempt < Math.min(2, tbankProxyAgents.length); attempt++) {
+      const agent = tbankProxyAgents[(tbankProxyCounter++ + attempt) % tbankProxyAgents.length];
+      try {
+        const res = await undiciFetch(`${API_URL}/${method}`, { ...init, dispatcher: agent });
+        if (!res.ok) throw new Error(`T-Bank недоступен (HTTP ${res.status}).`);
+        return (await res.json()) as T;
+      } catch (error) {
+        lastError = error;
+      }
+    }
+    throw lastError;
+  }
+
+  const res = await fetch(`${API_URL}/${method}`, init);
   if (!res.ok) throw new Error(`T-Bank недоступен (HTTP ${res.status}).`);
   return res.json() as Promise<T>;
 }

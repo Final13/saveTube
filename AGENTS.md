@@ -41,6 +41,7 @@ Next.js 16 + React 19, App Router, Tailwind v4, lucide-react, алиас `@/`. �
 ## Serverless (Vercel)
 
 - **API rutube.ru банит DC-IP** (Vercel/AWS → 404/403-заглушка), CDN `*.rtbcdn.ru` — нет. Поэтому только текстовые API-запросы идут через прокси: `rutubeApiFetch()` в `lib/rutube.ts` + `RUTUBE_API_PROXY=http://user:pass@host:port` (undici ProxyAgent, любой дешёвый RU-прокси, ~5 КБ/конвертацию). Плейлисты и сегменты — всегда напрямую.
+- **API T-Bank тоже режет зарубежные DC-IP** (Vercel fra1 → соединение рвётся, «fetch failed»; проверено боем 2026-08). `tbankRequest()` в `lib/tbank.ts` идёт через `TBANK_API_PROXY` (формат и ротация как у RUTUBE_API_PROXY, можно тот же прокси). Пусто — напрямую (VPS с RU-IP). API ЮKassa с Vercel доступен напрямую.
 - In-memory лимиты/кеши — per-instance. Прод-MySQL на localhost VPS → на Vercel недоступна (платежи отвечают «сервис недоступен»). Vercel = витрина со скачиванием, прод = VPS.
 
 ## Платежи T-Bank (не ломать)
