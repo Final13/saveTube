@@ -23,7 +23,7 @@ export default function Metrika() {
           {/* eslint-disable-next-line @next/next/no-img-element -- пиксель метрики */}
           <img
             src={`https://mc.yandex.ru/watch/${Number(ymId)}`}
-            style={{ position: "absolute", left: "-9999px" }}
+            className="absolute -left-[9999px]"
             alt=""
           />
         </div>

@@ -37,6 +37,7 @@ export default function PremiumModal({
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [sessionEmail, setSessionEmail] = useState<string | null>(null);
+  const [provider, setProvider] = useState<string | null>(null);
   const pollCount = useRef(0);
   const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -51,6 +52,15 @@ export default function PremiumModal({
           setEmail(data.email);
         }
       })
+      .catch(() => {});
+  }, []);
+
+  // Провайдер оплаты: фразу об автопродлении показываем только при рекурренте (ЮKassa),
+  // при разовых платежах T-Bank она была бы неправдой. Не ответил — скрываем.
+  useEffect(() => {
+    fetch("/api/payment/provider")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => setProvider(data?.provider ?? null))
       .catch(() => {});
   }, []);
 
@@ -187,8 +197,7 @@ export default function PremiumModal({
         {screen === "default" && (
           <>
             <p className="text-sm text-zinc-600 dark:text-zinc-400">
-              По-умолчанию скачивание видео происходит в 2-ух потоках, подписка позволит указать
-              любое количество потоков!
+              Подписка позволит увеличить количество потоков и отключит рекламу на сайте.
             </p>
             <p className="text-sm font-medium">Выберите подписку</p>
             <div className="grid grid-cols-3 gap-2">
@@ -207,12 +216,6 @@ export default function PremiumModal({
                 </button>
               ))}
             </div>
-            {sessionEmail && (
-              <p className="text-sm text-zinc-600 dark:text-zinc-400">
-                Подписка будет привязана к{" "}
-                <span className="font-medium text-zinc-900 dark:text-zinc-100">{sessionEmail}</span>
-              </p>
-            )}
             <input
               type="email"
               value={email}
@@ -224,12 +227,12 @@ export default function PremiumModal({
               className="h-11 w-full rounded-lg border border-zinc-300 px-4 outline-none dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100 transition focus:border-sky-500 focus:ring-2 focus:ring-sky-200 dark:focus:ring-sky-800"
             />
             {sessionEmail && (
-              <p className="-mt-2 text-xs text-zinc-500 dark:text-zinc-400">
-                На этот e-mail придёт чек — можно изменить, на привязку подписки это не влияет.
+              <p className="-mt-2 text-left text-xs text-zinc-500 dark:text-zinc-400">
+                На этот e-mail придёт чек.
               </p>
             )}
-            <p className="text-sm text-zinc-500 dark:text-zinc-400">
-              Регистрируясь, вы соглашаетесь с{" "}
+            <p className="text-left text-[14px] leading-[1.6] text-zinc-500 dark:text-zinc-400">
+              Оплачивая, вы соглашаетесь с{" "}
               <a
                 href="/agreement"
                 target="_blank"
@@ -258,6 +261,11 @@ export default function PremiumModal({
               {loading ? <Loader2 className="size-5 animate-spin" /> : null}
               Оплатить
             </button>
+            {provider === "yookassa" && (
+              <p className="text-center text-xs text-zinc-500 dark:text-zinc-400">
+                Автоматическое продление подписки. Можно отключить в любой момент в личном кабинете.
+              </p>
+            )}
             <button
               onClick={() => {
                 setError(null);

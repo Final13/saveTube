@@ -39,11 +39,12 @@ async function handlePost(request: Request) {
     return Response.json({ message: "Сервис временно недоступен." }, { status: 503 });
   }
 
-  // Антиспам: один код в минуту на email
+  // Антиспам: один код в минуту на email. Маркер alreadySent — фронт по нему
+  // переключается на шаг ввода кода (действующий код уже в почте), а не показывает ошибку.
   const acquired = await redis.set(`otp-sent:${email}`, "1", "EX", RESEND_COOLDOWN_SECONDS, "NX");
   if (!acquired) {
     return Response.json(
-      { message: "Код уже отправлен, проверьте почту." },
+      { message: "Код уже отправлен, проверьте почту.", alreadySent: true },
       { status: 429 },
     );
   }

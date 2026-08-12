@@ -29,7 +29,16 @@ export default function AuthForm({ onSuccess }: { onSuccess: () => void | Promis
         body: JSON.stringify({ email: email.trim() }),
       });
       const body = await res.json();
-      if (!res.ok) throw new Error(body.message || "Не удалось отправить код.");
+      if (!res.ok) {
+        // Код отправлен менее минуты назад и действует 5 минут — он уже в почте,
+        // поэтому это не ошибка: переходим на шаг ввода кода
+        if (body.alreadySent) {
+          setCode("");
+          setCodeSent(true);
+          return;
+        }
+        throw new Error(body.message || "Не удалось отправить код.");
+      }
       setCode("");
       setCodeSent(true);
     } catch (e) {
