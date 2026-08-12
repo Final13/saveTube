@@ -175,6 +175,8 @@ const server = http.createServer((req, res) => {
           upstream.statusCode === 404 ? 404 : 502,
           `Ошибка CDN (HTTP ${upstream.statusCode}).`,
         );
+        // Слот освобождаем явно: обработчик res "close" ставится только в ветке 200
+        releaseOnce();
         return;
       }
 

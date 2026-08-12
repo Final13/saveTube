@@ -64,22 +64,35 @@ async function handleGet(request: Request) {
   if (length) headers.set("Content-Length", length);
   headers.set("Cache-Control", "private, max-age=3600");
 
+  // Слот освобождаем ровно один раз — при завершении или отмене стрима
+  let released = false;
+  const releaseOnce = () => {
+    if (!released) {
+      released = true;
+      release(`proxy:${ip}`);
+    }
+  };
+  // reader снаружи start(): cancel() отменяет через него —
+  // body.cancel() на залоченном reader'ом теле кидал ERR_INVALID_STATE (unhandledRejection)
+  let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
+
   // Освобождаем слот, когда поток закрыт (клиентом или по завершении)
   const stream = new ReadableStream({
     async start(controller) {
-      const reader = upstream.body!.getReader();
+      const r = upstream.body!.getReader();
+      reader = r;
       // Token-bucket троттлинг стрима (см. proxy-node/server.js): средняя ≈ bps,
       // стартовый кредит 200мс; расписание абсолютное — опоздания таймера
       // компенсируются, ресинхронизация после отставания > 500мс (пауза клиента)
       let nextSlot = Date.now() - 200;
       try {
         for (;;) {
-          const { done, value } = await reader.read();
+          const { done, value } = await r.read();
           if (done) break;
           if (SPEED_LIMIT_BPS > 0) {
             nextSlot += (value.byteLength / SPEED_LIMIT_BPS) * 1000;
             const waitMs = nextSlot - Date.now();
-            if (waitMs > 0) await new Promise((r) => setTimeout(r, waitMs));
+            if (waitMs > 0) await new Promise((r2) => setTimeout(r2, waitMs));
             else if (waitMs < -500) nextSlot = Date.now();
           }
           controller.enqueue(value);
@@ -88,13 +101,19 @@ async function handleGet(request: Request) {
       } catch {
         controller.error(new Error("upstream aborted"));
       } finally {
-        reader.releaseLock();
-        release(`proxy:${ip}`);
+        r.releaseLock();
+        releaseOnce();
       }
     },
-    cancel() {
-      upstream.body?.cancel();
-      release(`proxy:${ip}`);
+    async cancel() {
+      // Отмена через reader: read() в start() завершится done, слот освободится
+      // в finally выше (releaseOnce идемпотентен)
+      try {
+        await reader?.cancel();
+      } catch {
+        /* стрим уже отменён */
+      }
+      releaseOnce();
     },
   });
 
