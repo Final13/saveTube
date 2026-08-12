@@ -247,33 +247,35 @@ export default function DownloadForm() {
       const controller = new AbortController();
       let poolError: Error | null = null;
 
-      const worker = async () => {
+      // Воркер берёт РОВНО ОДИН сегмент и завершается: цикл пополнения ниже
+      // пересчитывает threadsRef.current после КАЖДОГО сегмента, поэтому число
+      // потоков реально меняется на лету. (С воркерами «качай всё до конца»
+      // Promise.race не просыпался до исчерпания курсора — добавление не работало.)
+      const runSegment = async () => {
         const slot = acquireSlot();
+        const i = cursor++;
         try {
-          // Непрерывный пул: воркер сразу берёт следующий сегмент после завершения,
-          // не ждёт остальных (никаких пачек по N)
-          while (cursor < segments.length && !poolError) {
-            const i = cursor++;
-            chunks[i] = await fetchSegment(segments[i], controller.signal, (s) =>
-              setSlot(slot, s),
-            );
-            finished++;
-            setDownloaded(finished);
-            // Видимая пауза слота после каждого сегмента (как в оригинале — эффект
-            // живой загрузки: слот мелькает паузой и снова зеленеет)
-            setSlot(slot, "idle");
-            await new Promise((r) => setTimeout(r, 150));
-          }
+          chunks[i] = await fetchSegment(segments[i], controller.signal, (s) =>
+            setSlot(slot, s),
+          );
+          finished++;
+          setDownloaded(finished);
+          // Видимая пауза слота после каждого сегмента (как в оригинале — эффект
+          // живой загрузки: слот мелькает паузой и снова зеленеет)
+          setSlot(slot, "idle");
+          await new Promise((r) => setTimeout(r, 150));
         } finally {
           setSlot(slot, "idle");
+          if (slot !== null) busySlotsRef.current.delete(slot);
         }
       };
 
-      // Пул воркеров пополняется до threadsRef.current — число потоков можно менять на лету
+      // Непрерывный пул: после каждого завершённого сегмента добираем воркеров до
+      // threadsRef.current; при уменьшении числа — просто не добираем, лишние доработают
       const workers = new Set<Promise<void>>();
       while ((cursor < segments.length || workers.size > 0) && !poolError) {
         while (workers.size < threadsRef.current && cursor < segments.length && !poolError) {
-          const p = worker().catch((e: Error) => {
+          const p = runSegment().catch((e: Error) => {
             if (!poolError) {
               poolError = e;
               controller.abort();
@@ -315,6 +317,16 @@ export default function DownloadForm() {
     const next = Math.min(MAX_THREADS, Math.max(MIN_THREADS, threads + delta));
     setThreads(next);
     threadsRef.current = next;
+    // Индикаторы подгоняем под новое число: во время загрузки плашки рисуются из
+    // slotStates, без этого новые потоки были бы невидимы до конца загрузки.
+    // Вне загрузки slotStates пуст — плашки рисуются из threads.
+    setSlotStates((prev) => {
+      if (prev.length === 0 || prev.length === next) return prev;
+      if (prev.length < next) {
+        return [...prev, ...Array.from({ length: next - prev.length }, () => "idle" as const)];
+      }
+      return prev.slice(0, next); // лишние воркеры доработают — их setSlot игнорируется
+    });
   };
 
   const progress = total > 0 ? Math.round((downloaded / total) * 100) : 0;
