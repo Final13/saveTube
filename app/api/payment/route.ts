@@ -102,12 +102,16 @@ async function handleGet(request: Request) {
       });
       let yk;
       try {
-        yk = await createRedirectPayment({
-          paymentId,
-          amountRub: rate.priceRub,
-          title,
-          email: receiptEmail,
-        });
+        yk = await createRedirectPayment(
+          {
+            paymentId,
+            amountRub: rate.priceRub,
+            title,
+            email: receiptEmail,
+          },
+          // Магазин (боевой/тестовый) выбирается по email плательщика, а не чека
+          { accountEmail: email },
+        );
       } catch (error) {
         // В магазине не включён рекуррент — проводим как разовый платёж
         // (автопродление само заработает, когда менеджер ЮKassa включит повторные платежи)
@@ -115,7 +119,7 @@ async function handleGet(request: Request) {
         if (!message.includes("recurring payments")) throw error;
         yk = await createRedirectPayment(
           { paymentId, amountRub: rate.priceRub, title, email: receiptEmail },
-          { saveMethod: false, idempotenceKey: `create-${paymentId}-plain` },
+          { saveMethod: false, idempotenceKey: `create-${paymentId}-plain`, accountEmail: email },
         );
       }
       if (!yk.confirmation?.confirmation_url) {

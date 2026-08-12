@@ -31,7 +31,7 @@ async function handlePost(request: Request) {
   }
 
   try {
-    await deletePaymentMethod(recurrent.yookassa_payment_method_id);
+    await deletePaymentMethod(recurrent.yookassa_payment_method_id, email);
   } catch (error) {
     // Ошибку ЮKassa игнорируем: локальная отвязка важнее, подписка до оплаченной даты сохраняется
     console.warn("YooKassa deletePaymentMethod failed (best-effort):", error);

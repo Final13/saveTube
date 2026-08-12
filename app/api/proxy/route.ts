@@ -10,6 +10,11 @@ import { trackRequest } from "@/lib/metrics";
 // Лимит = MAX_THREADS на клиенте (подписка до 16 потоков) — иначе премиум упирался бы в 429
 const MAX_CONCURRENT_PER_IP = 16;
 
+// Лимит скорости на ОДИН стрим в МБ/с (как Throttle bps=2MB в старом бэке).
+// Можно дробное, "0" — без лимита. Держать синхронно с proxy-node/server.js.
+const mbps = Number(process.env.PROXY_SPEED_MBPS ?? 2);
+const SPEED_LIMIT_BPS = (Number.isFinite(mbps) ? mbps : 2) * 1024 * 1024;
+
 async function handleGet(request: Request) {
   const { searchParams } = new URL(request.url);
   const url = searchParams.get("url") ?? "";
@@ -63,10 +68,20 @@ async function handleGet(request: Request) {
   const stream = new ReadableStream({
     async start(controller) {
       const reader = upstream.body!.getReader();
+      // Token-bucket троттлинг стрима (см. proxy-node/server.js): средняя ≈ bps,
+      // стартовый кредит 200мс; расписание абсолютное — опоздания таймера
+      // компенсируются, ресинхронизация после отставания > 500мс (пауза клиента)
+      let nextSlot = Date.now() - 200;
       try {
         for (;;) {
           const { done, value } = await reader.read();
           if (done) break;
+          if (SPEED_LIMIT_BPS > 0) {
+            nextSlot += (value.byteLength / SPEED_LIMIT_BPS) * 1000;
+            const waitMs = nextSlot - Date.now();
+            if (waitMs > 0) await new Promise((r) => setTimeout(r, waitMs));
+            else if (waitMs < -500) nextSlot = Date.now();
+          }
           controller.enqueue(value);
         }
         controller.close();

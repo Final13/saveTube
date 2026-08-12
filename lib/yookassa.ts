@@ -3,6 +3,7 @@ import { getRate } from "@/lib/rates";
 import { getPayment, markPaid } from "@/lib/payments-store";
 import { upsertRecurrent } from "@/lib/recurrent-store";
 import { sendPaymentSuccessEmail } from "@/lib/email";
+import { isAdminEmail } from "@/lib/admin-auth";
 import { SITE_URL } from "@/lib/site";
 
 // Клиент ЮKassa API v3 на голом fetch (Basic shopId:secret, Idempotence-Key на создание).
@@ -10,10 +11,17 @@ import { SITE_URL } from "@/lib/site";
 
 const API_URL = "https://api.yookassa.ru/v3";
 
-function creds(): { shopId: string; secretKey: string } {
+type YookassaShop = "prod" | "test";
+
+function creds(email?: string | null, forceShop?: YookassaShop): { shopId: string; secretKey: string } {
   // Два магазина: боевой (YOOKASSA_*) и тестовый (YOOKASSA_TEST_*), как в CanvasKit.
-  // Тестовый — на Vercel (VERCEL=1) и на dev (NODE_ENV !== production); прод (VPS) — всегда боевой.
-  const useTest = process.env.VERCEL === "1" || process.env.NODE_ENV !== "production";
+  // Тестовый — на Vercel (VERCEL=1), на dev (NODE_ENV !== production) и для плательщиков
+  // из ADMIN_EMAILS даже на проде; остальные на проде (VPS) — боевой.
+  // forceShop — принудительный выбор магазина (перепроверка по id, когда email неизвестен).
+  const useTest =
+    forceShop === "test" ||
+    (forceShop !== "prod" &&
+      (process.env.VERCEL === "1" || process.env.NODE_ENV !== "production" || isAdminEmail(email)));
   const shopId =
     (useTest ? process.env.YOOKASSA_TEST_SHOP_ID : "") || process.env.YOOKASSA_SHOP_ID || "";
   const secretKey =
@@ -31,8 +39,9 @@ async function ykRequest<T>(
   path: string,
   body?: Record<string, unknown>,
   idempotenceKey?: string,
+  opts?: { email?: string | null; forceShop?: YookassaShop },
 ): Promise<T> {
-  const { shopId, secretKey } = creds();
+  const { shopId, secretKey } = creds(opts?.email, opts?.forceShop);
   const res = await fetch(`${API_URL}${path}`, {
     method,
     headers: {
@@ -47,7 +56,7 @@ async function ykRequest<T>(
   const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
   if (!res.ok) {
     const description = typeof data.description === "string" ? data.description : `HTTP ${res.status}`;
-    throw new Error(`ЮKassa: ${description}`);
+    throw new Error(`ЮKassa (HTTP ${res.status}): ${description}`);
   }
   return data as T;
 }
@@ -95,7 +104,7 @@ export async function createRedirectPayment(
     title: string;
     email: string;
   },
-  opts?: { saveMethod?: boolean; idempotenceKey?: string },
+  opts?: { saveMethod?: boolean; idempotenceKey?: string; accountEmail?: string },
 ): Promise<YookassaPayment> {
   const saveMethod = opts?.saveMethod ?? true;
   return ykRequest<YookassaPayment>(
@@ -111,6 +120,8 @@ export async function createRedirectPayment(
       receipt: buildReceipt(input.email, input.title, input.amountRub),
     },
     opts?.idempotenceKey ?? `create-${input.paymentId}`,
+    // Магазин выбираем по email плательщика (аккаунт/параметр), не по email чека.
+    { email: opts?.accountEmail ?? input.email },
   );
 }
 
@@ -135,12 +146,29 @@ export async function createRecurrentCharge(input: {
       receipt: buildReceipt(input.email, input.title, input.amountRub),
     },
     input.idempotenceKey,
+    { email: input.email },
   );
 }
 
-/** Перепроверка статуса напрямую у ЮKassa (вебхуку не доверяем). */
-export async function getYookassaPayment(id: string): Promise<YookassaPayment> {
-  return ykRequest<YookassaPayment>("GET", `/payments/${encodeURIComponent(id)}`);
+/** Перепроверка статуса напрямую у ЮKassa (вебхуку не доверяем).
+ *  email известен — магазин по нему; нет (вебхук) — сначала боевой, при 404 — тестовый. */
+export async function getYookassaPayment(id: string, email?: string | null): Promise<YookassaPayment> {
+  if (email) {
+    return ykRequest<YookassaPayment>("GET", `/payments/${encodeURIComponent(id)}`, undefined, undefined, {
+      email,
+    });
+  }
+  try {
+    return await ykRequest<YookassaPayment>("GET", `/payments/${encodeURIComponent(id)}`, undefined, undefined, {
+      forceShop: "prod",
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!message.includes("404") && !message.includes("doesn't exist")) throw error;
+    return ykRequest<YookassaPayment>("GET", `/payments/${encodeURIComponent(id)}`, undefined, undefined, {
+      forceShop: "test",
+    });
+  }
 }
 
 /**
@@ -194,8 +222,8 @@ export async function activateYookassaPayment(yk: YookassaPayment): Promise<numb
  * Отвязка сохранённого способа оплаты в ЮKassa (best-effort):
  * 404 — метода уже нет, считаем отвязанным; остальные ошибки пробрасываем.
  */
-export async function deletePaymentMethod(paymentMethodId: string): Promise<void> {
-  const { shopId, secretKey } = creds();
+export async function deletePaymentMethod(paymentMethodId: string, email?: string | null): Promise<void> {
+  const { shopId, secretKey } = creds(email);
   const res = await fetch(
     `${API_URL}/payment_methods/${encodeURIComponent(paymentMethodId)}`,
     {

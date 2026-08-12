@@ -8,6 +8,8 @@
 //   PORT               — порт (по умолчанию 3100)
 //   PROXY_NODE_ORIGIN  — допустимые Origin фронта для CORS, через запятую
 //                        ("*" — любой; у нас прод-код работает с "*")
+//   PROXY_SPEED_MBPS   — лимит скорости на ОДИН стрим в МБ/с (дефолт 2,
+//                        как Throttle bps=2MB в старом бэке; можно дробное, "0" — без лимита)
 
 import http from "node:http";
 import https from "node:https";
@@ -17,6 +19,8 @@ const ORIGINS = (process.env.PROXY_NODE_ORIGIN ?? "*")
   .split(",")
   .map((s) => s.trim())
   .filter(Boolean);
+const mbps = Number(process.env.PROXY_SPEED_MBPS ?? 2);
+const SPEED_LIMIT_BPS = (Number.isFinite(mbps) ? mbps : 2) * 1024 * 1024;
 
 // Лимит = MAX_THREADS на клиенте (подписка до 16 потоков)
 const MAX_CONCURRENT_PER_IP = 16;
@@ -57,6 +61,32 @@ const release = (ip) => {
   if (current <= 0) concurrency.delete(ip);
   else concurrency.set(ip, current);
 };
+
+// Token-bucket троттлинг одного стрима (аналог Throttle bps из старого бэка):
+// средняя скорость ≈ bps, стартовый кредит 200мс — мелкие сегменты отдаём сразу.
+// Расписание АБСОЛЮТНОЕ (nextSlot += ...): опоздания таймера (на Windows шаг ~15мс)
+// компенсируются следующими чанками, а не накапливаются; ресинхронизация только
+// после большого отставания (пауза/backpressure клиента).
+async function pipeWithLimit(upstream, res, bps) {
+  if (!bps) {
+    upstream.pipe(res);
+    return;
+  }
+  let nextSlot = Date.now() - 200;
+  try {
+    for await (const chunk of upstream) {
+      if (res.destroyed) return;
+      nextSlot += (chunk.length / bps) * 1000;
+      const waitMs = nextSlot - Date.now();
+      if (waitMs > 0) await new Promise((r) => setTimeout(r, waitMs));
+      else if (waitMs < -500) nextSlot = Date.now();
+      if (!res.write(chunk)) await new Promise((r) => res.once("drain", r));
+    }
+    res.end();
+  } catch {
+    res.destroy();
+  }
+}
 
 function getClientIp(req) {
   const forwarded = req.headers["x-forwarded-for"];
@@ -158,7 +188,7 @@ const server = http.createServer((req, res) => {
       }
       res.writeHead(200, headers);
 
-      upstream.pipe(res);
+      pipeWithLimit(upstream, res, SPEED_LIMIT_BPS);
       upstream.on("error", () => res.destroy());
       res.on("close", () => {
         upstream.destroy();

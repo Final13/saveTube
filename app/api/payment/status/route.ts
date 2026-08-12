@@ -28,7 +28,7 @@ async function handleGet(request: Request) {
     const payment = await getPayment(Number(paymentIdParam));
     if (payment && payment.status === 0 && payment.provider === "yookassa" && payment.merchant_id) {
       try {
-        const yk = await getYookassaPayment(payment.merchant_id);
+        const yk = await getYookassaPayment(payment.merchant_id, payment.email);
         await activateYookassaPayment(yk);
         active = await isPaymentActive(Number(paymentIdParam), email);
       } catch (error) {
