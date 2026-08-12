@@ -7,6 +7,8 @@ import { getIronSession, type IronSession } from "iron-session";
 export interface SessionData {
   userId?: string;
   email?: string;
+  /** true — сессия создана авто-регистрацией при покупке (не явным входом по коду) */
+  auto?: boolean;
 }
 
 const ONE_YEAR_SECONDS = 60 * 60 * 24 * 365;
@@ -34,10 +36,11 @@ export async function getSession(): Promise<IronSession<SessionData>> {
   return getIronSession<SessionData>(cookieStore, getSessionOptions());
 }
 
-export async function setSession(user: { id: string; email: string }) {
+export async function setSession(user: { id: string; email: string }, opts?: { auto?: boolean }) {
   const session = await getSession();
   session.userId = user.id;
   session.email = user.email;
+  session.auto = opts?.auto === true;
   await session.save();
 }
 

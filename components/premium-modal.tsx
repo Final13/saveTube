@@ -37,6 +37,9 @@ export default function PremiumModal({
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [sessionEmail, setSessionEmail] = useState<string | null>(null);
+  // true — сессия от авто-регистрации при покупке (не явный вход по коду):
+  // таким юзерам фразу об автопродлении НЕ показываем (решение владельца)
+  const [sessionAuto, setSessionAuto] = useState(false);
   const [provider, setProvider] = useState<string | null>(null);
   const pollCount = useRef(0);
   const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -49,6 +52,7 @@ export default function PremiumModal({
       .then((data) => {
         if (data?.email) {
           setSessionEmail(data.email);
+          setSessionAuto(data.auto === true);
           setEmail(data.email);
         }
       })
@@ -216,6 +220,11 @@ export default function PremiumModal({
                 </button>
               ))}
             </div>
+            {provider === "yookassa" && sessionEmail && !sessionAuto && (
+              <p className="text-left text-xs text-zinc-500 dark:text-zinc-400">
+                Автоматическое продление подписки. Можно отключить в любой момент в личном кабинете.
+              </p>
+            )}
             <input
               type="email"
               value={email}
@@ -261,11 +270,6 @@ export default function PremiumModal({
               {loading ? <Loader2 className="size-5 animate-spin" /> : null}
               Оплатить
             </button>
-            {provider === "yookassa" && (
-              <p className="text-center text-xs text-zinc-500 dark:text-zinc-400">
-                Автоматическое продление подписки. Можно отключить в любой момент в личном кабинете.
-              </p>
-            )}
             <button
               onClick={() => {
                 setError(null);

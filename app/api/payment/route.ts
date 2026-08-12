@@ -70,7 +70,9 @@ async function handleGet(request: Request) {
     const existing = await findUserByEmail(email);
     if (!existing) {
       const userId = await createUser({ email });
-      await setSession({ id: userId, email: email.toLowerCase() });
+      // Сессия от авто-регистрации помечается auto — модалка по ней НЕ показывает
+      // фразу об автопродлении (она только для явно залогиненных по коду)
+      await setSession({ id: userId, email: email.toLowerCase() }, { auto: true });
       registered = true;
     }
   } catch (error) {

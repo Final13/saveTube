@@ -32,6 +32,49 @@ const MAX_RETRIES = 4;
 
 type PremiumScreen = "default" | "success" | "error";
 
+// Опрос задачи get-segments до completed/failed (интервал 1.5с, до 90с).
+// Serverless-нюанс (как у pollVideoInfoTask): poll может попасть на инстанс,
+// который не знает задачу (404) — пересоздаём её и продолжаем опрос (до 2 раз).
+// Module-level: внутри компонента react-hooks/purity ругается на Date.now().
+async function pollSegmentsTask(
+  initialTaskId: string,
+  playlistUrl: string,
+): Promise<{ segments: string[]; token: string }> {
+  let taskId = initialTaskId;
+  let recreations = 0;
+  const deadline = Date.now() + 90_000;
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 1500));
+    const res = await fetch(`/api/get-segments?task_id=${encodeURIComponent(taskId)}`);
+    const data = await res.json();
+    if (res.status === 404 && recreations < 2) {
+      recreations += 1;
+      const recreate = await fetch("/api/get-segments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: playlistUrl }),
+      });
+      const recreated = await recreate.json();
+      if (recreate.ok || recreate.status === 202) {
+        // Пересоздание попало на кеш-хит — результат сразу
+        if (recreated.segments) {
+          return { segments: recreated.segments as string[], token: recreated.token as string };
+        }
+        taskId = recreated.task_id;
+        continue;
+      }
+    }
+    if (!res.ok) throw new Error(data.message || "Задание не найдено, попробуйте заново.");
+    if (data.status === "completed") {
+      return { segments: data.segments as string[], token: data.token as string };
+    }
+    if (data.status === "failed") {
+      throw new Error(data.message || "Не удалось получить список сегментов, попробуйте позже.");
+    }
+  }
+  throw new Error("RuTube отвечает слишком долго, попробуйте позже.");
+}
+
 export default function DownloadForm() {
   const [url, setUrl] = useState("");
   const [loading, setLoading] = useState(false);
@@ -196,9 +239,15 @@ export default function DownloadForm() {
         body: JSON.stringify({ url: quality.url }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Ошибка сервера, попробуйте позже.");
-      proxyTokenRef.current = data.token;
-      await downloadSegments(data.segments as string[], quality, info?.metadata.title ?? "video");
+      if (!res.ok && res.status !== 202)
+        throw new Error(data.message || "Ошибка сервера, попробуйте позже.");
+      // Кеш-хит — результат сразу; иначе пингуем статус задачи (бэк ретраит в фоне)
+      const { segments, token } =
+        res.status === 202
+          ? await pollSegmentsTask(data.task_id, quality.url)
+          : { segments: data.segments as string[], token: data.token as string };
+      proxyTokenRef.current = token;
+      await downloadSegments(segments, quality, info?.metadata.title ?? "video");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Ошибка сервера, попробуйте позже.");
     } finally {
