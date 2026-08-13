@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { SUPPORT_EMAIL } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: "Пользовательское соглашение",
@@ -134,6 +135,15 @@ export default function AgreementPage() {
       <p>
         Эти ограничения также распространяются на ущерб, связанный с другими услугами или
         продуктами, полученными или рекламируемыми в связи с услугой.
+      </p>
+
+      <h2>Реквизиты</h2>
+      <p>
+        Индивидуальный предприниматель Подольский Дмитрий Юрьевич
+        <br />
+        ИНН: 511004795744
+        <br />
+        Электронная почта: <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a>
       </p>
     </article>
   );
