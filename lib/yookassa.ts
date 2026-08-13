@@ -209,7 +209,9 @@ export async function activateYookassaPayment(yk: YookassaPayment): Promise<numb
       email: payment.email,
       rateIndex: payment.rate_index,
       paymentMethodId: yk.payment_method.id,
-      cardType: yk.payment_method.card?.card_type ?? null,
+      // Для карт — тип карты ("Mir", "Visa"), для прочих методов (SberPay, ЮMoney,
+      // СБП...) — код метода из payment_method.type; в ЛК мапится в читаемый вид.
+      cardType: yk.payment_method.card?.card_type ?? yk.payment_method.type ?? null,
       cardLast4: yk.payment_method.card?.last4 ?? null,
       nextBillingAt: until,
     });
@@ -236,6 +238,6 @@ export async function deletePaymentMethod(paymentMethodId: string, email?: strin
     },
   );
   if (!res.ok && res.status !== 404) {
-    throw new Error(`ЮKassa: не удалось отвязать карту (HTTP ${res.status}).`);
+    throw new Error(`ЮKassa: не удалось отвязать способ оплаты (HTTP ${res.status}).`);
   }
 }

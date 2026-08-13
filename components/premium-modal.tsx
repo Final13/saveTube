@@ -37,9 +37,6 @@ export default function PremiumModal({
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [sessionEmail, setSessionEmail] = useState<string | null>(null);
-  // true — сессия от авто-регистрации при покупке (не явный вход по коду):
-  // таким юзерам фразу об автопродлении НЕ показываем (решение владельца)
-  const [sessionAuto, setSessionAuto] = useState(false);
   const [provider, setProvider] = useState<string | null>(null);
   const pollCount = useRef(0);
   const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -52,7 +49,6 @@ export default function PremiumModal({
       .then((data) => {
         if (data?.email) {
           setSessionEmail(data.email);
-          setSessionAuto(data.auto === true);
           setEmail(data.email);
         }
       })
@@ -203,7 +199,7 @@ export default function PremiumModal({
             <p className="text-sm text-zinc-600 dark:text-zinc-400">
               Подписка позволит увеличить количество потоков и отключит рекламу на сайте.
             </p>
-            <p className="text-sm font-medium">Выберите подписку</p>
+            <p className="text-center text-base font-semibold">Выберите подписку</p>
             <div className="grid grid-cols-3 gap-2">
               {RATES.map((rate, i) => (
                 <button
@@ -220,8 +216,8 @@ export default function PremiumModal({
                 </button>
               ))}
             </div>
-            {provider === "yookassa" && sessionEmail && !sessionAuto && (
-              <p className="text-left text-xs text-zinc-500 dark:text-zinc-400">
+            {provider === "yookassa" && (
+              <p className="text-left text-base leading-[1.6] text-zinc-500 dark:text-zinc-400">
                 Автоматическое продление подписки. Можно отключить в любой момент в личном кабинете.
               </p>
             )}
@@ -241,7 +237,8 @@ export default function PremiumModal({
               </p>
             )}
             <p className="text-left text-[14px] leading-[1.6] text-zinc-500 dark:text-zinc-400">
-              Оплачивая, вы соглашаетесь с{" "}
+              {/* Без сессии оплата = регистрация, с сессией — просто оплата */}
+              {sessionEmail ? "Оплачивая" : "Регистрируясь"}, вы соглашаетесь с{" "}
               <a
                 href="/agreement"
                 target="_blank"

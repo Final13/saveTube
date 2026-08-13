@@ -38,6 +38,24 @@ function providerLabel(provider: string): string {
   return provider === "yookassa" ? "ЮKassa" : provider === "tbank" ? "T-Bank" : "—";
 }
 
+// Коды сохранённых методов ЮKassa → читаемые подписи (в card_type лежит код метода,
+// если метод не карта; для карт там тип карты, а last4 — в card_last4).
+const METHOD_LABELS: Record<string, string> = {
+  bank_card: "Банковская карта",
+  sberbank: "SberPay",
+  yoo_money: "ЮMoney",
+  sbp: "СБП",
+  tinkoff_bank: "T-Pay",
+  alfa_pay: "Alfa Pay",
+  mir_pay: "Mir Pay",
+};
+
+function recurrentMethodLabel(cardType: string | null, cardLast4: string | null): string {
+  if (cardLast4) return `${cardType ? `${cardType} ` : ""}•• ${cardLast4}`;
+  if (cardType && METHOD_LABELS[cardType]) return METHOD_LABELS[cardType];
+  return cardType ?? "Сохранённый способ оплаты";
+}
+
 // Личный кабинет по сессии (iron-session cookie savetube_session).
 // Нет сессии — вход по одноразовому коду из письма (шаг 1: email → код на почту,
 // шаг 2: ввод кода); есть сессия — статус подписки, автопродление с отвязкой
@@ -87,14 +105,14 @@ export default function AccountPanel() {
 
   async function handleUnlink() {
     if (unlinking) return;
-    if (!window.confirm("Отвязать карту? Автопродление будет отключено, подписка продолжит действовать до оплаченной даты.")) {
+    if (!window.confirm("Отвязать способ оплаты? Автопродление будет отключено, подписка продолжит действовать до оплаченной даты.")) {
       return;
     }
     setUnlinking(true);
     try {
       const res = await fetch("/api/account/unlink", { method: "POST" });
       const body = await res.json();
-      if (!res.ok) throw new Error(body.message || "Не удалось отвязать карту.");
+      if (!res.ok) throw new Error(body.message || "Не удалось отвязать способ оплаты.");
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Ошибка сети.");
@@ -163,8 +181,7 @@ export default function AccountPanel() {
               <div className="mt-3 flex flex-wrap items-center gap-3">
                 <span className="flex items-center gap-2 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-3 py-2 text-sm">
                   <CreditCard className="size-5 text-zinc-500 dark:text-zinc-400" />
-                  {data.recurrent.card_type ? `${data.recurrent.card_type} ` : ""}••{" "}
-                  {data.recurrent.card_last4 ?? "····"}
+                  {recurrentMethodLabel(data.recurrent.card_type, data.recurrent.card_last4)}
                 </span>
                 <span className="text-sm text-zinc-600 dark:text-zinc-400">
                   {RATES[data.recurrent.rate_index]?.title ?? "Подписка"}, следующее списание —{" "}
@@ -176,12 +193,12 @@ export default function AccountPanel() {
                   className="ml-auto flex items-center gap-2 rounded-lg border border-red-300 px-3 py-2 text-sm font-medium text-red-600 dark:text-red-400 transition hover:bg-red-50 dark:hover:bg-red-950 disabled:opacity-60"
                 >
                   {unlinking && <Loader2 className="size-4 animate-spin" />}
-                  Отвязать карту
+                  Отвязать способ оплаты
                 </button>
               </div>
             ) : (
               <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
-                Карта не привязана. Автопродление появится после оплаты подписки через ЮKassa.
+                Способ оплаты не привязан. Автопродление появится после оплаты подписки через ЮKassa.
               </p>
             )}
           </div>
