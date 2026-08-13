@@ -171,6 +171,25 @@ export async function getYookassaPayment(id: string, email?: string | null): Pro
   }
 }
 
+/** Читаемая метка способа оплаты для админки: "Visa •• 1234" для карт, "SberPay"/"ЮMoney"... для прочих. */
+const METHOD_LABELS: Record<string, string> = {
+  bank_card: "Банковская карта",
+  sberbank: "SberPay",
+  yoo_money: "ЮMoney",
+  sbp: "СБП",
+  tinkoff_bank: "T-Pay",
+  alfa_pay: "Alfa Pay",
+  mir_pay: "Mir Pay",
+};
+
+function paymentMethodLabel(pm?: YookassaPayment["payment_method"]): string | null {
+  if (!pm) return null;
+  if (pm.card?.card_type) {
+    return pm.card.card_type + (pm.card.last4 ? ` •• ${pm.card.last4}` : "");
+  }
+  return (pm.type && METHOD_LABELS[pm.type]) || pm.type || null;
+}
+
 /**
  * Активация оплаченного платежа ЮKassa: продлевает подписку в общей таблице платежей
  * (от текущей даты окончания, если она в будущем) и сохраняет метод для автопродления.
@@ -190,7 +209,7 @@ export async function activateYookassaPayment(yk: YookassaPayment): Promise<numb
 
   const base = Math.max(Date.now(), payment.subscription_until ?? 0);
   const until = base + rate.days * 24 * 60 * 60 * 1000;
-  const activated = await markPaid(payment.id, until);
+  const activated = await markPaid(payment.id, until, paymentMethodLabel(yk.payment_method));
 
   if (activated) {
     // Письмо об оплате — только при реальной активации (повторы вебхука не дублируют),

@@ -41,15 +41,22 @@ function ensurePaymentsSchema(): Promise<void> {
           INDEX idx_payments_email (payment_email, payment_status, payment_untiled_at)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
       `);
-      // Колонка провайдера: NULL — легаси-записи (T-Bank)
+      // Колонка провайдера: NULL — легаси-записи (T-Bank).
+      // Колонка способа оплаты: "Visa •• 1234" / "SberPay" / "ЮMoney" и т.п. (только ЮKassa)
       const columns = (await db.query(
         `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
-         WHERE TABLE_NAME = ? AND TABLE_SCHEMA = DATABASE() AND COLUMN_NAME = 'payment_provider'`,
+         WHERE TABLE_NAME = ? AND TABLE_SCHEMA = DATABASE() AND COLUMN_NAME IN ('payment_provider', 'payment_method')`,
         [paymentsTable()],
       )) as Array<{ COLUMN_NAME: string }>;
-      if (columns.length === 0) {
+      const existingCols = new Set(columns.map((c) => c.COLUMN_NAME));
+      if (!existingCols.has("payment_provider")) {
         await db.query(
           `ALTER TABLE ${paymentsTable()} ADD COLUMN payment_provider VARCHAR(10) NULL`,
+        );
+      }
+      if (!existingCols.has("payment_method")) {
+        await db.query(
+          `ALTER TABLE ${paymentsTable()} ADD COLUMN payment_method VARCHAR(64) NULL`,
         );
       }
       // Легаси-таблица от старого бэкенда могла создаться с NOT NULL без дефолта
@@ -148,17 +155,19 @@ export async function setMerchantId(id: number, merchantId: string): Promise<voi
   ]);
 }
 
-/** Идемпотентная активация: переводит в оплачено только если ещё pending. true — активировано сейчас. */
-export async function markPaid(id: number, subscriptionUntil: number): Promise<boolean> {
+/** Идемпотентная активация: переводит в оплачено только если ещё pending. true — активировано сейчас.
+ *  method — способ оплаты ("Visa •• 1234", "SberPay"...), если известен (ЮKassa). */
+export async function markPaid(id: number, subscriptionUntil: number, method?: string | null): Promise<boolean> {
   await ensurePaymentsSchema();
   const db = getMysqlClient();
   if (!db) return false;
 
   const result = (await db.query(
     `UPDATE ${paymentsTable()}
-     SET payment_status = 1, payment_untiled_at = FROM_UNIXTIME(? / 1000)
+     SET payment_status = 1, payment_untiled_at = FROM_UNIXTIME(? / 1000),
+       payment_method = COALESCE(?, payment_method)
      WHERE payment_id = ? AND payment_status = 0`,
-    [subscriptionUntil, id],
+    [subscriptionUntil, method ?? null, id],
   )) as { affectedRows: number };
   return result.affectedRows > 0;
 }
@@ -200,6 +209,7 @@ export interface PaymentListItem {
   title: string;
   status: 0 | 1;
   provider: string; // 'tbank' | 'yookassa' | 'legacy'
+  method: string | null; // способ оплаты ("Visa •• 1234", "SberPay"...), только ЮKassa
   merchant_id: string | null;
   subscription_until: number | null; // unix ms
   created_at: number | null; // unix ms, дата создания платежа
@@ -214,7 +224,7 @@ export async function listPayments(limit = 50): Promise<PaymentListItem[]> {
   const rows = (await db.query(
     `SELECT payment_id AS id, payment_email AS email, payment_rate_index AS rate_index,
        payment_amount AS amount, payment_title AS title, payment_status AS status,
-       payment_provider AS provider, payment_merchant_id AS merchant_id,
+       payment_provider AS provider, payment_method AS method, payment_merchant_id AS merchant_id,
        UNIX_TIMESTAMP(payment_untiled_at) * 1000 AS subscription_until,
        UNIX_TIMESTAMP(payment_created_at) * 1000 AS created_at
      FROM ${paymentsTable()} ORDER BY payment_id DESC LIMIT ?`,
@@ -228,10 +238,56 @@ export async function listPayments(limit = 50): Promise<PaymentListItem[]> {
     title: String(row.title),
     status: Number(row.status) === 1 ? 1 : 0,
     provider: row.provider ? String(row.provider) : "legacy",
+    method: row.method ? String(row.method) : null,
     merchant_id: row.merchant_id ? String(row.merchant_id) : null,
     subscription_until: row.subscription_until ? Number(row.subscription_until) : null,
     created_at: row.created_at ? Number(row.created_at) : null,
   }));
+}
+
+export interface PaymentMethodStat {
+  method: string; // метка корзины: "Банковская карта", "SberPay", "T-Bank"...
+  count: number;
+}
+
+/** Разбивка оплаченных платежей по способам оплаты (все время, для админки).
+ *  Все карты (Visa, MasterCard, Mir...) схлопываются в «Банковская карта». */
+export async function getPaymentMethodStats(): Promise<PaymentMethodStat[]> {
+  await ensurePaymentsSchema();
+  const db = getMysqlClient();
+  if (!db) return [];
+
+  const rows = (await db.query(
+    `SELECT payment_method AS method_full, payment_provider AS provider, COUNT(*) AS cnt
+     FROM ${paymentsTable()}
+     WHERE payment_status = 1
+     GROUP BY method_full, provider`,
+  )) as Array<{ method_full: string | null; provider: string | null; cnt: number }>;
+
+  const merged = new Map<string, number>();
+  // Типы карт ЮKassa (если last4 не пришёл, метка — просто тип карты)
+  const cardTypes = new Set([
+    "visa", "mastercard", "mir", "маэстро", "maestro", "unionpay", "jcb",
+    "americanexpress", "dinersclub", "unknown",
+  ]);
+  for (const row of rows) {
+    const full = row.method_full ? String(row.method_full).trim() : "";
+    let label: string;
+    if (!full) {
+      label = row.provider === "yookassa" ? "ЮKassa — без данных" : "T-Bank";
+    } else if (
+      full.includes(" ••") ||
+      full === "Банковская карта" ||
+      cardTypes.has(full.toLowerCase().replace(/[\s-]/g, ""))
+    ) {
+      // карта с last4 ("Visa •• 1234") или карта без данных о типе/last4
+      label = "Банковская карта";
+    } else {
+      label = full;
+    }
+    merged.set(label, (merged.get(label) ?? 0) + Number(row.cnt));
+  }
+  return Array.from(merged, ([method, count]) => ({ method, count })).sort((a, b) => b.count - a.count);
 }
 
 /** Последние платежи конкретного email (для ЛК), новые первыми. */
@@ -243,7 +299,7 @@ export async function listPaymentsByEmail(email: string, limit = 10): Promise<Pa
   const rows = (await db.query(
     `SELECT payment_id AS id, payment_email AS email, payment_rate_index AS rate_index,
        payment_amount AS amount, payment_title AS title, payment_status AS status,
-       payment_provider AS provider, payment_merchant_id AS merchant_id,
+       payment_provider AS provider, payment_method AS method, payment_merchant_id AS merchant_id,
        UNIX_TIMESTAMP(payment_untiled_at) * 1000 AS subscription_until,
        UNIX_TIMESTAMP(payment_created_at) * 1000 AS created_at
      FROM ${paymentsTable()} WHERE payment_email = ? ORDER BY payment_id DESC LIMIT ?`,
@@ -257,6 +313,7 @@ export async function listPaymentsByEmail(email: string, limit = 10): Promise<Pa
     title: String(row.title),
     status: Number(row.status) === 1 ? 1 : 0,
     provider: row.provider ? String(row.provider) : "legacy",
+    method: row.method ? String(row.method) : null,
     merchant_id: row.merchant_id ? String(row.merchant_id) : null,
     subscription_until: row.subscription_until ? Number(row.subscription_until) : null,
     created_at: row.created_at ? Number(row.created_at) : null,

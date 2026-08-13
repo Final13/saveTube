@@ -5,6 +5,7 @@ import { RATES } from "@/lib/rates";
 
 interface PaymentsData {
   provider: "tbank" | "yookassa";
+  methodStats: Array<{ method: string; count: number }>;
   payments: Array<{
     id: number;
     email: string;
@@ -13,6 +14,7 @@ interface PaymentsData {
     title: string;
     status: 0 | 1;
     provider: string;
+    method: string | null;
     merchant_id: string | null;
     subscription_until: number | null;
     created_at: number | null;
@@ -22,6 +24,8 @@ interface PaymentsData {
     email: string;
     rate_index: number;
     yookassa_payment_method_id: string;
+    card_type: string | null;
+    card_last4: string | null;
     active: boolean;
     next_billing_at: number;
     created_at: number | null;
@@ -35,6 +39,24 @@ const PROVIDERS = [
 
 function rateTitle(index: number): string {
   return RATES[index]?.title ?? `#${index}`;
+}
+
+// Коды методов ЮKassa → читаемые подписи (в recurrent card_type лежит код метода,
+// если метод не карта; для карт там тип карты + last4)
+const METHOD_LABELS: Record<string, string> = {
+  bank_card: "Банковская карта",
+  sberbank: "SberPay",
+  yoo_money: "ЮMoney",
+  sbp: "СБП",
+  tinkoff_bank: "T-Pay",
+  alfa_pay: "Alfa Pay",
+  mir_pay: "Mir Pay",
+};
+
+function methodLabel(cardType: string | null, cardLast4: string | null): string {
+  if (cardLast4) return `${cardType ? `${cardType} ` : ""}•• ${cardLast4}`;
+  if (!cardType) return "—";
+  return METHOD_LABELS[cardType] ?? cardType;
 }
 
 function formatDate(ms: number | null): string {
@@ -137,6 +159,7 @@ export default function PaymentsPanel() {
                 <tr className="text-left text-xs text-slate-400">
                   <th className="py-1 pr-4 font-medium">Email</th>
                   <th className="py-1 pr-4 font-medium">Тариф</th>
+                  <th className="py-1 pr-4 font-medium">Способ</th>
                   <th className="py-1 pr-4 font-medium">Следующее списание</th>
                   <th className="py-1 font-medium">Статус</th>
                 </tr>
@@ -146,6 +169,7 @@ export default function PaymentsPanel() {
                   <tr key={r.id} className="border-t border-slate-100 dark:border-zinc-800 text-slate-700 dark:text-zinc-200">
                     <td className="py-1.5 pr-4">{r.email}</td>
                     <td className="py-1.5 pr-4">{rateTitle(r.rate_index)}</td>
+                    <td className="py-1.5 pr-4">{methodLabel(r.card_type, r.card_last4)}</td>
                     <td className="py-1.5 pr-4">{formatDate(r.next_billing_at)}</td>
                     <td
                       className={`py-1.5 ${r.active ? "text-emerald-600 dark:text-emerald-400" : "text-slate-400"}`}
@@ -156,13 +180,45 @@ export default function PaymentsPanel() {
                 ))}
                 {data.recurrent.length === 0 && (
                   <tr>
-                    <td colSpan={4} className="py-3 text-center text-slate-400">
+                    <td colSpan={5} className="py-3 text-center text-slate-400">
                       Пока нет автопродлений
                     </td>
                   </tr>
                 )}
               </tbody>
             </table>
+          </div>
+
+          <div className="mt-4 rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-4 shadow-sm">
+            <h3 className="text-sm font-semibold text-slate-700 dark:text-zinc-200">
+              Способы оплаты (все оплаченные)
+            </h3>
+            {(() => {
+              const total = data.methodStats.reduce((sum, s) => sum + s.count, 0);
+              if (total === 0) {
+                return <p className="mt-2 text-sm text-slate-400">Оплаченных платежей пока нет.</p>;
+              }
+              return (
+                <div className="mt-3 space-y-2">
+                  {data.methodStats.map((s) => {
+                    const pct = (s.count / total) * 100;
+                    return (
+                      <div key={s.method}>
+                        <div className="flex items-baseline justify-between text-sm">
+                          <span className="text-slate-700 dark:text-zinc-200">{s.method}</span>
+                          <span className="text-xs text-slate-400">
+                            {s.count} · {pct.toFixed(1)}%
+                          </span>
+                        </div>
+                        <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-zinc-800">
+                          <div className="h-full rounded-full bg-sky-600" style={{ width: `${pct}%` }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
           </div>
 
           <div className="mt-4 rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-4 shadow-sm">
@@ -174,6 +230,7 @@ export default function PaymentsPanel() {
                   <th className="py-1 pr-4 font-medium">Email</th>
                   <th className="py-1 pr-4 font-medium">Сумма</th>
                   <th className="py-1 pr-4 font-medium">Провайдер</th>
+                  <th className="py-1 pr-4 font-medium">Способ</th>
                   <th className="py-1 pr-4 font-medium">Статус</th>
                   <th className="py-1 pr-4 font-medium">Дата платежа</th>
                   <th className="py-1 font-medium">Подписка до</th>
@@ -188,6 +245,7 @@ export default function PaymentsPanel() {
                     <td className="py-1.5 pr-4">
                       {p.provider === "yookassa" ? "ЮKassa" : p.provider === "tbank" ? "T-Bank" : "—"}
                     </td>
+                    <td className="py-1.5 pr-4">{p.method ?? "—"}</td>
                     <td
                       className={`py-1.5 pr-4 ${p.status === 1 ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400"}`}
                     >
@@ -199,7 +257,7 @@ export default function PaymentsPanel() {
                 ))}
                 {data.payments.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="py-3 text-center text-slate-400">
+                    <td colSpan={8} className="py-3 text-center text-slate-400">
                       Платежей пока нет
                     </td>
                   </tr>

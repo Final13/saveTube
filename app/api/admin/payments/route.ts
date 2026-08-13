@@ -1,5 +1,5 @@
 import { getAdminEmail } from "@/lib/admin-auth";
-import { listPayments } from "@/lib/payments-store";
+import { getPaymentMethodStats, listPayments } from "@/lib/payments-store";
 import { listRecurrent } from "@/lib/recurrent-store";
 import { getPaymentProvider, setPaymentProvider } from "@/lib/settings-store";
 import { getClientIp, rateLimit } from "@/lib/rate-limit";
@@ -19,6 +19,7 @@ async function handleGet() {
     provider: await getPaymentProvider(),
     payments: await listPayments(50),
     recurrent: await listRecurrent(),
+    methodStats: await getPaymentMethodStats(),
   });
 }
 
