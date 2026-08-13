@@ -38,6 +38,7 @@ export default function RsyBanner() {
   const [open, setOpen] = useState(false);
   const [countdown, setCountdown] = useState(COUNTDOWN_SECONDS);
   const blockIndex = useRef(0);
+  const lastBlockId = useRef<string | null>(null);
   const adRendered = useRef(false);
   const rotationTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const countdownTimer = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -58,6 +59,7 @@ export default function RsyBanner() {
     const advManager = window.Ya.Context.AdvManager;
     const blockId = `R-A-${RSY_ID}-${4 + (blockIndex.current % 5)}`;
     blockIndex.current++;
+    lastBlockId.current = blockId;
 
     adRendered.current = false;
     setOpen(false);
@@ -123,7 +125,18 @@ export default function RsyBanner() {
         }`}
       >
         <button
-          onClick={() => countdown <= 0 && setOpen(false)}
+          onClick={() => {
+            if (countdown > 0) return;
+            setOpen(false);
+            // Креативы RTB ставят себе visibility:visible и игнорируют invisible-родителя
+            // (прячется только фон) — поэтому блок уничтожаем, контейнер чистим.
+            // Ротация продолжает работать: следующий блок отрендерится и покажется заново.
+            if (lastBlockId.current) {
+              window.Ya?.Context?.AdvManager?.destroy?.(lastBlockId.current);
+            }
+            const container = document.getElementById(CONTAINER_ID);
+            if (container) container.innerHTML = "";
+          }}
           aria-label="Закрыть рекламу"
           className={`absolute -top-9 right-2 flex size-8 items-center justify-center rounded-t-lg text-base ${
             countdown > 0
