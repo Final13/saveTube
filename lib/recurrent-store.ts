@@ -185,14 +185,34 @@ export async function markRecurrentBilled(id: number, nextBillingAt: number): Pr
   );
 }
 
-/** Все рекуррентные подписки (для админки). */
-export async function listRecurrent(): Promise<RecurrentSubscription[]> {
+/** Общее число активных автопродлений (для заголовка админки; не зависит от пагинации). */
+export async function countActiveRecurrent(): Promise<number> {
   await ensureRecurrentSchema();
   const db = getMysqlClient();
-  if (!db) return [];
+  if (!db) return 0;
 
   const rows = (await db.query(
-    `SELECT ${SELECT_FIELDS} FROM ${recurrentTable()} ORDER BY created_at DESC LIMIT 100`,
+    `SELECT COUNT(*) AS cnt FROM ${recurrentTable()} WHERE active = 1`,
+  )) as Array<{ cnt: number }>;
+  return Number(rows[0]?.cnt ?? 0);
+}
+
+/** Все рекуррентные подписки (для админки), новые первыми, страницами по курсору id. */
+export async function listRecurrent(
+  limit = 10,
+  beforeId?: number | null,
+): Promise<{ items: RecurrentSubscription[]; hasMore: boolean }> {
+  await ensureRecurrentSchema();
+  const db = getMysqlClient();
+  if (!db) return { items: [], hasMore: false };
+
+  // Тянем limit+1 — по лишней строке понимаем, есть ли продолжение
+  const rows = (await db.query(
+    `SELECT ${SELECT_FIELDS} FROM ${recurrentTable()}
+     ${beforeId ? "WHERE id < ?" : ""}
+     ORDER BY id DESC LIMIT ?`,
+    beforeId ? [beforeId, limit + 1] : [limit + 1],
   )) as RecurrentRow[];
-  return rows.map(parseRow);
+  const hasMore = rows.length > limit;
+  return { hasMore, items: rows.slice(0, limit).map(parseRow) };
 }

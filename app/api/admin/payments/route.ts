@@ -1,25 +1,38 @@
 import { getAdminEmail } from "@/lib/admin-auth";
 import { getPaymentMethodStats, listPaidYookassaWithoutMethod, listPayments, setPaymentMethod } from "@/lib/payments-store";
 import { getYookassaPayment, paymentMethodLabel } from "@/lib/yookassa";
-import { listRecurrent } from "@/lib/recurrent-store";
+import { countActiveRecurrent, listRecurrent } from "@/lib/recurrent-store";
 import { getPaymentProvider, setPaymentProvider } from "@/lib/settings-store";
 import { getClientIp, rateLimit } from "@/lib/rate-limit";
 import { trackRequest } from "@/lib/metrics";
 
 const RATE_LIMIT_PER_MINUTE = 30;
 
-// Данные раздела «Оплата» в админке: активный провайдер, последние платежи,
-// рекуррентные подписки ЮKassa. Только для админа (cookie admin_session).
-async function handleGet() {
+// Данные раздела «Оплата» в админке: активный провайдер, платежи и рекуррентные
+// подписки ЮKassa постранично (по 10, курсор ?payments_before=/?recurrent_before= —
+// id последней показанной записи). Только для админа (cookie admin_session).
+async function handleGet(request: Request) {
   const admin = await getAdminEmail();
   if (!admin) {
     return Response.json({ message: "Forbidden" }, { status: 403 });
   }
 
+  const { searchParams } = new URL(request.url);
+  const paymentsBefore = Number(searchParams.get("payments_before")) || null;
+  const recurrentBefore = Number(searchParams.get("recurrent_before")) || null;
+  // Догрузка одной таблицы по курсору
+  if (paymentsBefore) {
+    return Response.json({ payments: await listPayments(10, paymentsBefore) });
+  }
+  if (recurrentBefore) {
+    return Response.json({ recurrent: await listRecurrent(10, recurrentBefore) });
+  }
+
   return Response.json({
     provider: await getPaymentProvider(),
-    payments: await listPayments(50),
-    recurrent: await listRecurrent(),
+    payments: await listPayments(10),
+    recurrent: await listRecurrent(10),
+    recurrentActiveTotal: await countActiveRecurrent(),
     methodStats: await getPaymentMethodStats(),
   });
 }
@@ -87,7 +100,7 @@ async function handlePost(request: Request) {
 }
 
 export async function GET(request: Request) {
-  return trackRequest("admin-payments", request, () => handleGet());
+  return trackRequest("admin-payments", request, () => handleGet(request));
 }
 
 export async function POST(request: Request) {

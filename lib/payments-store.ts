@@ -215,34 +215,46 @@ export interface PaymentListItem {
   created_at: number | null; // unix ms, дата создания платежа
 }
 
-/** Последние платежи (для админки), новые первыми. */
-export async function listPayments(limit = 50): Promise<PaymentListItem[]> {
+export interface AdminPage<T> {
+  items: T[];
+  hasMore: boolean; // есть ли ещё записи за курсором
+}
+
+/** Последние платежи (для админки), новые первыми, страницами по курсору id. */
+export async function listPayments(limit = 10, beforeId?: number | null): Promise<AdminPage<PaymentListItem>> {
   await ensurePaymentsSchema();
   const db = getMysqlClient();
-  if (!db) return [];
+  if (!db) return { items: [], hasMore: false };
 
+  // Тянем limit+1 — по лишней строке понимаем, есть ли продолжение
   const rows = (await db.query(
     `SELECT payment_id AS id, payment_email AS email, payment_rate_index AS rate_index,
        payment_amount AS amount, payment_title AS title, payment_status AS status,
        payment_provider AS provider, payment_method AS method, payment_merchant_id AS merchant_id,
        UNIX_TIMESTAMP(payment_untiled_at) * 1000 AS subscription_until,
        UNIX_TIMESTAMP(payment_created_at) * 1000 AS created_at
-     FROM ${paymentsTable()} ORDER BY payment_id DESC LIMIT ?`,
-    [limit],
+     FROM ${paymentsTable()}
+     ${beforeId ? "WHERE payment_id < ?" : ""}
+     ORDER BY payment_id DESC LIMIT ?`,
+    beforeId ? [beforeId, limit + 1] : [limit + 1],
   )) as Array<Record<string, unknown>>;
-  return rows.map((row) => ({
-    id: Number(row.id),
-    email: String(row.email),
-    rate_index: Number(row.rate_index),
-    amount: Number(row.amount),
-    title: String(row.title),
-    status: Number(row.status) === 1 ? 1 : 0,
-    provider: row.provider ? String(row.provider) : "legacy",
-    method: row.method ? String(row.method) : null,
-    merchant_id: row.merchant_id ? String(row.merchant_id) : null,
-    subscription_until: row.subscription_until ? Number(row.subscription_until) : null,
-    created_at: row.created_at ? Number(row.created_at) : null,
-  }));
+  const hasMore = rows.length > limit;
+  return {
+    hasMore,
+    items: rows.slice(0, limit).map((row) => ({
+      id: Number(row.id),
+      email: String(row.email),
+      rate_index: Number(row.rate_index),
+      amount: Number(row.amount),
+      title: String(row.title),
+      status: Number(row.status) === 1 ? 1 : 0,
+      provider: row.provider ? String(row.provider) : "legacy",
+      method: row.method ? String(row.method) : null,
+      merchant_id: row.merchant_id ? String(row.merchant_id) : null,
+      subscription_until: row.subscription_until ? Number(row.subscription_until) : null,
+      created_at: row.created_at ? Number(row.created_at) : null,
+    })),
+  };
 }
 
 export interface PaymentMethodStat {

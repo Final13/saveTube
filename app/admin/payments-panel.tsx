@@ -3,10 +3,16 @@
 import { useCallback, useEffect, useState } from "react";
 import { RATES } from "@/lib/rates";
 
+interface Page<T> {
+  items: T[];
+  hasMore: boolean;
+}
+
 interface PaymentsData {
   provider: "tbank" | "yookassa";
   methodStats: Array<{ method: string; count: number }>;
-  payments: Array<{
+  recurrentActiveTotal: number;
+  payments: Page<{
     id: number;
     email: string;
     rate_index: number;
@@ -19,7 +25,7 @@ interface PaymentsData {
     subscription_until: number | null;
     created_at: number | null;
   }>;
-  recurrent: Array<{
+  recurrent: Page<{
     id: number;
     email: string;
     rate_index: number;
@@ -77,6 +83,7 @@ export default function PaymentsPanel() {
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [backfilling, setBackfilling] = useState(false);
+  const [loadingMore, setLoadingMore] = useState<"payments" | "recurrent" | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -116,6 +123,52 @@ export default function PaymentsPanel() {
       setError("Ошибка сети.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  // Догрузка следующей страницы таблицы (курсор — id последней показанной записи)
+  async function loadMore(table: "payments" | "recurrent") {
+    if (!data || loadingMore) return;
+    const page = data[table];
+    const last = page.items[page.items.length - 1];
+    if (!page.hasMore || !last) return;
+    setLoadingMore(table);
+    try {
+      const response = await fetch(`/api/admin/payments?${table}_before=${last.id}`, { cache: "no-store" });
+      if (!response.ok) {
+        setError("Не удалось загрузить ещё.");
+        return;
+      }
+      const body = (await response.json()) as {
+        payments?: PaymentsData["payments"];
+        recurrent?: PaymentsData["recurrent"];
+      };
+      setData((prev) => {
+        if (!prev) return prev;
+        if (table === "payments") {
+          if (!body.payments) return prev;
+          return {
+            ...prev,
+            payments: {
+              items: [...prev.payments.items, ...body.payments.items],
+              hasMore: body.payments.hasMore,
+            },
+          };
+        }
+        if (!body.recurrent) return prev;
+        return {
+          ...prev,
+          recurrent: {
+            items: [...prev.recurrent.items, ...body.recurrent.items],
+            hasMore: body.recurrent.hasMore,
+          },
+        };
+      });
+      setError("");
+    } catch {
+      setError("Ошибка сети.");
+    } finally {
+      setLoadingMore(null);
     }
   }
 
@@ -176,7 +229,7 @@ export default function PaymentsPanel() {
         <>
           <div className="mt-4 rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-4 shadow-sm">
             <h3 className="text-sm font-semibold text-slate-700 dark:text-zinc-200">
-              Автопродления ЮKassa ({data.recurrent.filter((r) => r.active).length})
+              Автопродления ЮKassa (активных: {data.recurrentActiveTotal})
             </h3>
             <table className="mt-2 w-full text-sm">
               <thead>
@@ -189,7 +242,7 @@ export default function PaymentsPanel() {
                 </tr>
               </thead>
               <tbody>
-                {data.recurrent.map((r) => (
+                {data.recurrent.items.map((r) => (
                   <tr key={r.id} className="border-t border-slate-100 dark:border-zinc-800 text-slate-700 dark:text-zinc-200">
                     <td className="py-1.5 pr-4">{r.email}</td>
                     <td className="py-1.5 pr-4">{rateTitle(r.rate_index)}</td>
@@ -202,7 +255,7 @@ export default function PaymentsPanel() {
                     </td>
                   </tr>
                 ))}
-                {data.recurrent.length === 0 && (
+                {data.recurrent.items.length === 0 && (
                   <tr>
                     <td colSpan={5} className="py-3 text-center text-slate-400">
                       Пока нет автопродлений
@@ -211,6 +264,15 @@ export default function PaymentsPanel() {
                 )}
               </tbody>
             </table>
+            {data.recurrent.hasMore && (
+              <button
+                onClick={() => void loadMore("recurrent")}
+                disabled={loadingMore === "recurrent"}
+                className="mt-3 w-full rounded-lg border border-slate-200 dark:border-zinc-800 py-2 text-sm font-medium text-slate-600 dark:text-zinc-400 transition hover:bg-slate-50 dark:hover:bg-zinc-800 disabled:opacity-60"
+              >
+                {loadingMore === "recurrent" ? "Загрузка…" : "Показать ещё 10"}
+              </button>
+            )}
           </div>
 
           <div className="mt-4 rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-4 shadow-sm">
@@ -270,7 +332,7 @@ export default function PaymentsPanel() {
                 </tr>
               </thead>
               <tbody>
-                {data.payments.map((p) => (
+                {data.payments.items.map((p) => (
                   <tr key={p.id} className="border-t border-slate-100 dark:border-zinc-800 text-slate-700 dark:text-zinc-200">
                     <td className="py-1.5 pr-4 font-mono text-xs">{p.id}</td>
                     <td className="py-1.5 pr-4">{p.email}</td>
@@ -288,7 +350,7 @@ export default function PaymentsPanel() {
                     <td className="py-1.5">{formatDate(p.subscription_until)}</td>
                   </tr>
                 ))}
-                {data.payments.length === 0 && (
+                {data.payments.items.length === 0 && (
                   <tr>
                     <td colSpan={8} className="py-3 text-center text-slate-400">
                       Платежей пока нет
@@ -297,6 +359,15 @@ export default function PaymentsPanel() {
                 )}
               </tbody>
             </table>
+            {data.payments.hasMore && (
+              <button
+                onClick={() => void loadMore("payments")}
+                disabled={loadingMore === "payments"}
+                className="mt-3 w-full rounded-lg border border-slate-200 dark:border-zinc-800 py-2 text-sm font-medium text-slate-600 dark:text-zinc-400 transition hover:bg-slate-50 dark:hover:bg-zinc-800 disabled:opacity-60"
+              >
+                {loadingMore === "payments" ? "Загрузка…" : "Показать ещё 10"}
+              </button>
+            )}
           </div>
         </>
       )}
