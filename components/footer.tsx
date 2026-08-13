@@ -3,7 +3,8 @@ import RsyBanner from "@/components/rsy-banner";
 import { SITE_NAME } from "@/lib/site";
 
 // Футер — как в оригинале: центрированное меню ссылок. Почта вынесена на /contacts.
-export default function Footer() {
+// hideAds — премиум (layout считает по подписке): РСЯ-баннер не рендерим вовсе.
+export default function Footer({ hideAds = false }: { hideAds?: boolean }) {
   return (
     <>
       <footer className="mt-auto border-t border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900">
@@ -45,7 +46,7 @@ export default function Footer() {
           </p>
         </div>
       </footer>
-      <RsyBanner />
+      {!hideAds && <RsyBanner />}
     </>
   );
 }

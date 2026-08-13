@@ -5,6 +5,9 @@ import Script from "next/script";
 
 // Футер-баннер Яндекс.РСЯ: ротация блоков каждые 30 сек, крестик закрытия через 5 сек,
 // скрыт на экранах < 830px. Без NEXT_PUBLIC_RSY_ID не рендерится.
+// ВАЖНО: скрытие — только через visibility (invisible), НЕ display:none: Яндекс отказывается
+// рендерить в скрытый контейнер (warning CONTAINER_IS_HIDDEN) и баннер не показывается вовсе.
+// visibility:hidden не перехватывает клики, так что фантомного перекрытия нет.
 
 const RSY_ID = process.env.NEXT_PUBLIC_RSY_ID;
 const CONTAINER_ID = `yandex_rtb_R-A-${RSY_ID}-4`;
@@ -116,7 +119,7 @@ export default function RsyBanner() {
       />
       <div
         className={`fixed inset-x-0 bottom-0 z-40 bg-white dark:bg-zinc-900 shadow-[0_-4px_16px_rgba(0,0,0,0.12)] ${
-          open ? "block" : "hidden"
+          open ? "visible" : "invisible"
         }`}
       >
         <button

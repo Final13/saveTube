@@ -6,6 +6,7 @@ import Footer from "@/components/footer";
 import Metrika from "@/components/metrika";
 import { ThemeProvider } from "@/lib/theme";
 import { getSession } from "@/lib/auth/session";
+import { hasActiveSubscription } from "@/lib/payments-store";
 import { SITE_DESCRIPTION, SITE_NAME, SITE_URL } from "@/lib/site";
 import "./globals.css";
 
@@ -70,6 +71,20 @@ export default async function RootLayout({
   const session = await getSession();
   const loggedIn = Boolean(session.userId);
 
+  // Скрытие РСЯ-рекламы для премиума (обещание модалки «отключит рекламу»):
+  // email из сессии либо device-cookie user_email → проверка активной подписки.
+  // Серверно, чтобы не было вспышки рекламы; без MySQL — false (реклама показывается).
+  const userEmailCookie = cookieStore.get("user_email")?.value;
+  const premEmail = session.email ?? (userEmailCookie ? decodeURIComponent(userEmailCookie) : null);
+  let hideAds = false;
+  if (premEmail) {
+    try {
+      hideAds = await hasActiveSubscription(premEmail);
+    } catch {
+      hideAds = false;
+    }
+  }
+
   return (
     <html
       lang="ru"
@@ -86,7 +101,7 @@ export default async function RootLayout({
         <ThemeProvider defaultResolvedTheme={serverResolvedTheme}>
           <Header initialLoggedIn={loggedIn} initialTheme={serverResolvedTheme} />
           <main className="mx-auto w-full max-w-4xl flex-1 px-4">{children}</main>
-          <Footer />
+          <Footer hideAds={hideAds} />
         </ThemeProvider>
         <Metrika />
       </body>
