@@ -27,6 +27,18 @@ export default function Footer() {
             >
               Контакты
             </Link>
+            <Link
+              href="/privacy-consent"
+              className="transition hover:text-zinc-900 dark:hover:text-zinc-100"
+            >
+              Согласие на обработку персональных данных
+            </Link>
+            <Link
+              href="/cookie-policy"
+              className="transition hover:text-zinc-900 dark:hover:text-zinc-100"
+            >
+              Политика cookies
+            </Link>
           </nav>
           <p className="mt-3">
             © {new Date().getFullYear()} {SITE_NAME} — скачивание видео с RuTube
