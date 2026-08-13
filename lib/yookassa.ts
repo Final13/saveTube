@@ -182,7 +182,7 @@ const METHOD_LABELS: Record<string, string> = {
   mir_pay: "Mir Pay",
 };
 
-function paymentMethodLabel(pm?: YookassaPayment["payment_method"]): string | null {
+export function paymentMethodLabel(pm?: YookassaPayment["payment_method"]): string | null {
   if (!pm) return null;
   if (pm.card?.card_type) {
     return pm.card.card_type + (pm.card.last4 ? ` •• ${pm.card.last4}` : "");

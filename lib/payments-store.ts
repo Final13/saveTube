@@ -290,6 +290,37 @@ export async function getPaymentMethodStats(): Promise<PaymentMethodStat[]> {
   return Array.from(merged, ([method, count]) => ({ method, count })).sort((a, b) => b.count - a.count);
 }
 
+/** Оплаченные платежи ЮKassa без записанного способа (для разового бэкфилла из админки). */
+export async function listPaidYookassaWithoutMethod(
+  limit = 200,
+): Promise<Array<{ id: number; email: string; merchant_id: string }>> {
+  await ensurePaymentsSchema();
+  const db = getMysqlClient();
+  if (!db) return [];
+
+  const rows = (await db.query(
+    `SELECT payment_id AS id, payment_email AS email, payment_merchant_id AS merchant_id
+     FROM ${paymentsTable()}
+     WHERE payment_status = 1 AND payment_provider = 'yookassa' AND payment_method IS NULL
+       AND payment_merchant_id IS NOT NULL AND payment_merchant_id <> ''
+     ORDER BY payment_id DESC LIMIT ?`,
+    [limit],
+  )) as Array<{ id: number; email: string; merchant_id: string }>;
+  return rows.map((row) => ({
+    id: Number(row.id),
+    email: String(row.email),
+    merchant_id: String(row.merchant_id),
+  }));
+}
+
+/** Записать способ оплаты платежу (бэкфилл из админки). */
+export async function setPaymentMethod(id: number, method: string): Promise<void> {
+  await ensurePaymentsSchema();
+  const db = getMysqlClient();
+  if (!db) return;
+  await db.query(`UPDATE ${paymentsTable()} SET payment_method = ? WHERE payment_id = ?`, [method, id]);
+}
+
 /** Последние платежи конкретного email (для ЛК), новые первыми. */
 export async function listPaymentsByEmail(email: string, limit = 10): Promise<PaymentListItem[]> {
   await ensurePaymentsSchema();

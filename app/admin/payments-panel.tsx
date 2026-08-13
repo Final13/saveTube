@@ -76,6 +76,7 @@ export default function PaymentsPanel() {
   const [data, setData] = useState<PaymentsData | null>(null);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [backfilling, setBackfilling] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -115,6 +116,29 @@ export default function PaymentsPanel() {
       setError("Ошибка сети.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  // Бэкфилл способов оплаты для старых платежей ЮKassa (колонка появилась позже)
+  async function backfillMethods() {
+    if (backfilling) return;
+    setBackfilling(true);
+    try {
+      const response = await fetch("/api/admin/payments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "backfill-methods" }),
+      });
+      if (!response.ok) {
+        const body = (await response.json().catch(() => ({}))) as { message?: string };
+        setError(body.message || "Не удалось подтянуть способы.");
+        return;
+      }
+      await load();
+    } catch {
+      setError("Ошибка сети.");
+    } finally {
+      setBackfilling(false);
     }
   }
 
@@ -190,8 +214,17 @@ export default function PaymentsPanel() {
           </div>
 
           <div className="mt-4 rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-4 shadow-sm">
-            <h3 className="text-sm font-semibold text-slate-700 dark:text-zinc-200">
+            <h3 className="flex items-center gap-3 text-sm font-semibold text-slate-700 dark:text-zinc-200">
               Способы оплаты (все оплаченные)
+              {data.methodStats.some((s) => s.method === "ЮKassa — без данных") && (
+                <button
+                  onClick={() => void backfillMethods()}
+                  disabled={backfilling}
+                  className="rounded-md border border-sky-600 px-2 py-0.5 text-xs font-medium text-sky-700 dark:text-sky-400 transition hover:bg-sky-50 dark:hover:bg-sky-950 disabled:opacity-60"
+                >
+                  {backfilling ? "Подтягиваю…" : "Подтянуть способы из ЮKassa"}
+                </button>
+              )}
             </h3>
             {(() => {
               const total = data.methodStats.reduce((sum, s) => sum + s.count, 0);

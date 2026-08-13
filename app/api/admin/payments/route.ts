@@ -1,5 +1,6 @@
 import { getAdminEmail } from "@/lib/admin-auth";
-import { getPaymentMethodStats, listPayments } from "@/lib/payments-store";
+import { getPaymentMethodStats, listPaidYookassaWithoutMethod, listPayments, setPaymentMethod } from "@/lib/payments-store";
+import { getYookassaPayment, paymentMethodLabel } from "@/lib/yookassa";
 import { listRecurrent } from "@/lib/recurrent-store";
 import { getPaymentProvider, setPaymentProvider } from "@/lib/settings-store";
 import { getClientIp, rateLimit } from "@/lib/rate-limit";
@@ -42,6 +43,32 @@ async function handlePost(request: Request) {
     body = await request.json();
   } catch {
     return Response.json({ message: "Некорректный запрос." }, { status: 400 });
+  }
+
+  // Разовый бэкфилл способов оплаты для старых оплаченных платежей ЮKassa:
+  // дотягиваем payment_method из API по merchant_id (до 200 за раз, идемпотентно)
+  if (body.action === "backfill-methods") {
+    const missing = await listPaidYookassaWithoutMethod(200);
+    let updated = 0;
+    let failed = 0;
+    for (const payment of missing) {
+      try {
+        let yk;
+        try {
+          yk = await getYookassaPayment(payment.merchant_id, payment.email);
+        } catch {
+          // Платёж мог быть в другом магазине (боевой/тестовый) — перепробуем оба
+          yk = await getYookassaPayment(payment.merchant_id);
+        }
+        const label = paymentMethodLabel(yk.payment_method);
+        if (!label) throw new Error("no method");
+        await setPaymentMethod(payment.id, label);
+        updated++;
+      } catch {
+        failed++;
+      }
+    }
+    return Response.json({ ok: true, updated, failed, remaining: missing.length - updated });
   }
 
   const provider = body.provider === "yookassa" ? "yookassa" : body.provider === "tbank" ? "tbank" : null;
