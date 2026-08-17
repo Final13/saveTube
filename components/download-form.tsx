@@ -107,14 +107,23 @@ export default function DownloadForm() {
 
   // При загрузке: автопроверка подписки по cookie + экраны успеха/ошибки из URL (?success/?error)
   useEffect(() => {
+    // Автопроверка подписки: сначала по cookie user_email (маркер устройства), если её
+    // нет — по email сессии (/api/auth/me). Status-эндпоинт сам ставит cookie на 365д.
+    const checkStatus = (email: string) =>
+      fetch(`/api/payment/status?email=${encodeURIComponent(email)}`)
+        .then((r) => r.json())
+        .then((data) => data.status && setPremium(true))
+        .catch(() => {});
     const savedEmail = document.cookie
       .split("; ")
       .find((r) => r.startsWith("user_email="))
       ?.split("=")[1];
     if (savedEmail) {
-      fetch(`/api/payment/status?email=${savedEmail}`)
-        .then((r) => r.json())
-        .then((data) => data.status && setPremium(true))
+      checkStatus(decodeURIComponent(savedEmail));
+    } else {
+      fetch("/api/auth/me")
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data) => data?.email && checkStatus(data.email))
         .catch(() => {});
     }
     // Подписка, купленная через шапку, — разблокирует потоки без перезагрузки
