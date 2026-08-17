@@ -480,19 +480,25 @@ export default function DownloadForm() {
                       >
                         <Lock className="size-4" /> Разблокировать
                       </button>
-                      <button
-                        onClick={() => setWhy4k((v) => !v)}
-                        className="w-full text-center text-xs text-zinc-500 underline decoration-dotted underline-offset-2 transition hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
-                      >
-                        Почему?
-                      </button>
-                      {why4k && (
-                        <p className="rounded-lg bg-orange-50 p-2 text-xs leading-relaxed text-orange-900 dark:bg-orange-950 dark:text-orange-200">
+                      {/* Тултип, а не блок в потоке: размер карточки не меняется.
+                          Ховер (десктоп) — group-hover, тап (мобилка) — тоггл по клику. */}
+                      <div className="group relative">
+                        <button
+                          onClick={() => setWhy4k((v) => !v)}
+                          className="w-full text-center text-xs text-zinc-500 underline decoration-dotted underline-offset-2 transition hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
+                        >
+                          Почему?
+                        </button>
+                        <p
+                          className={`pointer-events-none absolute left-1/2 top-full z-10 mt-1 w-56 -translate-x-1/2 rounded-lg bg-orange-50 p-2 text-left text-xs leading-relaxed text-orange-900 shadow-md transition-opacity dark:bg-orange-950 dark:text-orange-200 ${
+                            why4k ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+                          }`}
+                        >
                           Видео в 4K весит в разы больше обычного — пропускать такой трафик через
                           наши серверы очень дорого. Поэтому скачивание в 4K доступно только по
                           подписке.
                         </p>
-                      )}
+                      </div>
                     </div>
                   ) : (
                     <button
