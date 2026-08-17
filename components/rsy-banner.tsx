@@ -81,6 +81,30 @@ export default function RsyBanner() {
     });
   }, [startCountdown]);
 
+  const startRotation = useCallback(() => {
+    if (rotationTimer.current) clearInterval(rotationTimer.current);
+    rotationTimer.current = setInterval(renderAd, ROTATION_MS);
+  }, [renderAd]);
+
+  // Ротация — только на видимой вкладке: в фоне браузер троттлит setInterval,
+  // а Яндекс откладывает рендеры — при возвращении накопленное крутится подряд.
+  useEffect(() => {
+    if (!RSY_ID) return;
+    const onVisibility = () => {
+      if (document.hidden) {
+        if (rotationTimer.current) {
+          clearInterval(rotationTimer.current);
+          rotationTimer.current = null;
+        }
+      } else if (window.Ya?.Context?.AdvManager) {
+        renderAd(); // свежий блок сразу при возвращении
+        startRotation();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, [renderAd, startRotation]);
+
   // Скрытие/показ при ресайзе
   useEffect(() => {
     if (!RSY_ID) return;
@@ -116,7 +140,7 @@ export default function RsyBanner() {
         strategy="lazyOnload"
         onLoad={() => {
           renderAd();
-          rotationTimer.current = setInterval(renderAd, ROTATION_MS);
+          startRotation();
         }}
       />
       <div

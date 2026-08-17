@@ -94,7 +94,7 @@ Next.js 16 + React 19, App Router, Tailwind v4, lucide-react, алиас `@/`. �
 
 ## РСЯ
 
-`components/rsy-banner.tsx`: блоки `R-A-{NEXT_PUBLIC_RSY_ID}-{4..8}`, ротация 30с, крестик после 5с, скрыт при ширине <830px, партнёр 14782353. Контейнер — `w-full` без overflow/max-width (не резать креатив), крестик вплотную: `-top-8 right-0`. **Скрытие — только `invisible` (visibility), не `hidden` (display:none)** — Яндекс не рендерит в скрытый контейнер (`CONTAINER_IS_HIDDEN`, баннер молча не показывался). **Крестик — destroy блока + очистка контейнера**: креативы RTB ставят себе `visibility:visible` и игнорируют invisible-родителя. Ротация после закрытия продолжается. **Премиум без рекламы:** layout считает `hideAds` (email из сессии/cookie `user_email` → `hasActiveSubscription`, серверно; без MySQL — показывается), футер баннер не рендерит.
+`components/rsy-banner.tsx`: блоки `R-A-{NEXT_PUBLIC_RSY_ID}-{4..8}`, ротация 30с, крестик после 5с, скрыт при ширине <830px, партнёр 14782353. Контейнер — `w-full` без overflow/max-width (не резать креатив), крестик вплотную: `-top-8 right-0`. **Скрытие — только `invisible` (visibility), не `hidden` (display:none)** — Яндекс не рендерит в скрытый контейнер (`CONTAINER_IS_HIDDEN`). **Крестик — destroy блока + очистка контейнера**: креативы RTB ставят себе `visibility:visible` и игнорируют invisible-родителя. Ротация после закрытия продолжается; на скрытой вкладке — пауза (visibilitychange). **Премиум без рекламы:** layout считает `hideAds` (email из сессии/cookie `user_email` → `hasActiveSubscription`, серверно; без MySQL — показывается), футер баннер не рендерит.
 
 ## Админка метрик (/admin)
 
