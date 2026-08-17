@@ -3,8 +3,7 @@ import Link from "next/link";
 
 export const metadata: Metadata = {
   title: "Легкий способ скачать видео с RuTube бесплатно",
-  description:
-    "Бесплатный онлайн-загрузчик для скачивания видео с RuTube. Сохраняйте ролики в MP4, MP3, Full HD и 4K без регистрации и программ. Работает на телефонах и ПК.",
+  description: "Инструкция к сайту Save-Tube.ru - как скачать видео с RuTube",
   alternates: { canonical: "/manual" },
   openGraph: {
     title: "Как скачать видео с RuTube — пошаговая инструкция",
