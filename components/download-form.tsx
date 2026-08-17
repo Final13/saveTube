@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { CircleAlert, Download, Loader2, Minus, Pause, Plus, X, Zap } from "lucide-react";
+import { CircleAlert, Download, Loader2, Lock, Minus, Pause, Plus, X, Zap } from "lucide-react";
 import PremiumModal from "@/components/premium-modal";
 import { buildProxyUrl } from "@/lib/proxy-nodes";
 
@@ -31,6 +31,10 @@ const MAX_THREADS = 16;
 const MAX_RETRIES = 4;
 
 type PremiumScreen = "default" | "success" | "error";
+
+// 4K = высота кадра от 2160p. Скачивание в 4K — только по подписке:
+// трафик через прокси-ноды в разы больше, бесплатно не потянем.
+const is4K = (q: VideoQuality) => parseInt(q.qualityLabel, 10) >= 2160;
 
 // Опрос задачи get-segments до completed/failed (интервал 1.5с, до 90с).
 // Serverless-нюанс (как у pollVideoInfoTask): poll может попасть на инстанс,
@@ -99,6 +103,7 @@ export default function DownloadForm() {
   const [premium, setPremium] = useState(false);
   const [premiumOpen, setPremiumOpen] = useState(false);
   const [premiumScreen, setPremiumScreen] = useState<PremiumScreen>("default");
+  const [why4k, setWhy4k] = useState(false); // объяснение платного 4K в карточке качества
 
   // При загрузке: автопроверка подписки по cookie + экраны успеха/ошибки из URL (?success/?error)
   useEffect(() => {
@@ -230,6 +235,12 @@ export default function DownloadForm() {
   };
 
   const handleDownload = async (quality: VideoQuality, index: number) => {
+    // 4K без подписки — вместо скачивания модалка оплаты (страховка к замене кнопки)
+    if (is4K(quality) && !premium) {
+      setPremiumScreen("default");
+      setPremiumOpen(true);
+      return;
+    }
     setError(null);
     setPreparing(index);
     try {
@@ -458,21 +469,48 @@ export default function DownloadForm() {
                       <b>{q.qualityLabel}</b> ({q.description})
                     </p>
                   </div>
-                  <button
-                    onClick={() => handleDownload(q, i)}
-                    disabled={preparing !== null}
-                    className="flex items-center justify-center gap-2 rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sky-700 disabled:opacity-60"
-                  >
-                    {preparing === i ? (
-                      <>
-                        <Loader2 className="size-4 animate-spin" /> Подождите
-                      </>
-                    ) : (
-                      <>
-                        <Download className="size-4" /> Скачать видео
-                      </>
-                    )}
-                  </button>
+                  {is4K(q) && !premium ? (
+                    <div className="space-y-2">
+                      <button
+                        onClick={() => {
+                          setPremiumScreen("default");
+                          setPremiumOpen(true);
+                        }}
+                        className="flex w-full items-center justify-center gap-2 rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-orange-600"
+                      >
+                        <Lock className="size-4" /> Разблокировать
+                      </button>
+                      <button
+                        onClick={() => setWhy4k((v) => !v)}
+                        className="w-full text-center text-xs text-zinc-500 underline decoration-dotted underline-offset-2 transition hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
+                      >
+                        Почему?
+                      </button>
+                      {why4k && (
+                        <p className="rounded-lg bg-orange-50 p-2 text-xs leading-relaxed text-orange-900 dark:bg-orange-950 dark:text-orange-200">
+                          Видео в 4K весит в разы больше обычного — пропускать такой трафик через
+                          наши серверы очень дорого. Поэтому скачивание в 4K доступно только по
+                          подписке.
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => handleDownload(q, i)}
+                      disabled={preparing !== null}
+                      className="flex items-center justify-center gap-2 rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sky-700 disabled:opacity-60"
+                    >
+                      {preparing === i ? (
+                        <>
+                          <Loader2 className="size-4 animate-spin" /> Подождите
+                        </>
+                      ) : (
+                        <>
+                          <Download className="size-4" /> Скачать видео
+                        </>
+                      )}
+                    </button>
+                  )}
                 </div>
               ))}
             </div>

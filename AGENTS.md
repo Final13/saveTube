@@ -52,7 +52,7 @@ Next.js 16 + React 19, App Router, Tailwind v4, lucide-react, алиас `@/`. �
 - Вебхук `app/api/payment/notification`: подпись → `CONFIRMED` → перепроверка `GetState` → идемпотентный `markPaid`. Ответ строго `"OK"`/`"ERROR"` (ERROR = банк пришлёт повтор).
 - Хранилище `lib/payments-store.ts` (MySQL, `lib/mysql.ts` globalThis-синглтон): таблица `{MYSQL_TABLE_PREFIX}payments` (дефолт `wp_`), колонки от старого бэкенда — старые подписки распознаются без миграции. `payment_amount` в РУБЛЯХ (в банк — копейки), `OrderId` = `payment_id`. Таблица самосоздаётся. **Синглтон само-переподключается** (патч `client.query`): на «closed state»/«Connection lost»/ECONNRESET сбрасывается, запрос повторяется раз со свежим клиентом; не откатывать, иначе MySQL-роуты умирают до рестарта.
 - Фронт `components/premium-modal.tsx`: тарифы → `GET /api/payment` → редирект на `PaymentURL`, поллинг `/api/payment/status` 5с×25. **Привязка подписки — по email сессии, если залогинен** (инпут = `receipt_email` для чека 54-ФЗ, пусто → email сессии); незалогиненные — параметр `email` = и привязка, и чек (авто-регистрация). Cookie `user_email` (365д) ставит status-эндпоинт, download-form автопроверяет по ней. **Перемонтирование модалки по `key` и открытие по `?success`/`?error` через setTimeout — осознанные обходы линта, не «чинить».**
-- Потоки `+/-` видны ТОЛЬКО при активной подписке; бесплатным — «⚡ Ускорить» (модалка). Шапка: только «Войти»/«Кабинет» → `/account` («⚡ Премиум» убран по решению владельца).
+- Потоки `+/-` видны ТОЛЬКО при активной подписке, 4K — тоже (гейт в download-form); бесплатным — «⚡ Ускорить» (модалка). Шапка: только «Войти»/«Кабинет» → `/account` («⚡ Премиум» убран владельцем).
 
 ## ЮKassa + автопродление (зафиксировано)
 
@@ -94,7 +94,7 @@ Next.js 16 + React 19, App Router, Tailwind v4, lucide-react, алиас `@/`. �
 
 ## РСЯ
 
-`components/rsy-banner.tsx`: блоки `R-A-{NEXT_PUBLIC_RSY_ID}-{4..8}`, ротация 30с, крестик после 5с, скрыт при ширине <830px, партнёр 14782353. Контейнер — `w-full` без overflow/max-width (не резать креатив), крестик вплотную: `-top-8 right-0`. **Скрытие — только `invisible` (visibility), не `hidden` (display:none)** — Яндекс не рендерит в скрытый контейнер (`CONTAINER_IS_HIDDEN`). **Крестик — destroy блока + очистка контейнера**: креативы RTB ставят себе `visibility:visible` и игнорируют invisible-родителя. Ротация после закрытия продолжается; на скрытой вкладке — пауза (visibilitychange). **Премиум без рекламы:** layout считает `hideAds` (email из сессии/cookie `user_email` → `hasActiveSubscription`, серверно; без MySQL — показывается), футер баннер не рендерит.
+`components/rsy-banner.tsx`: блоки `R-A-{NEXT_PUBLIC_RSY_ID}-{4..8}`, ротация 30с, крестик после 5с, скрыт при ширине <830px, партнёр 14782353. Контейнер — `w-full` без overflow/max-width, крестик `-top-8 right-0`. **Скрытие — только `invisible` (visibility), не `hidden` (display:none)** — Яндекс не рендерит в скрытый контейнер (`CONTAINER_IS_HIDDEN`). **Крестик — destroy блока + очистка контейнера**: креативы RTB ставят себе `visibility:visible` и игнорируют invisible-родителя. Ротация после закрытия продолжается; на скрытой вкладке — пауза (visibilitychange). **Премиум без рекламы:** layout считает `hideAds` (email из сессии/cookie `user_email` → `hasActiveSubscription`, серверно; без MySQL — показывается), футер баннер не рендерит.
 
 ## Админка метрик (/admin)
 

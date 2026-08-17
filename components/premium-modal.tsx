@@ -197,7 +197,8 @@ export default function PremiumModal({
         {screen === "default" && (
           <>
             <p className="text-sm text-zinc-600 dark:text-zinc-400">
-              Подписка позволит увеличить количество потоков и отключит рекламу на сайте.
+              Подписка открывает скачивание в 4K, позволит увеличить количество потоков и
+              отключит рекламу на сайте.
             </p>
             <p className="text-center text-base font-semibold">Выберите подписку</p>
             <div className="grid grid-cols-3 gap-2">
