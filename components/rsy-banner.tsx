@@ -138,7 +138,7 @@ export default function RsyBanner() {
             if (container) container.innerHTML = "";
           }}
           aria-label="Закрыть рекламу"
-          className={`absolute -top-9 right-2 flex size-8 items-center justify-center rounded-t-lg text-base ${
+          className={`absolute -top-8 right-0 flex size-8 items-center justify-center rounded-t-lg text-base ${
             countdown > 0
               ? "cursor-default bg-zinc-700 text-zinc-300"
               : "bg-zinc-900 text-white hover:bg-zinc-700"
@@ -146,7 +146,7 @@ export default function RsyBanner() {
         >
           {countdown > 0 ? countdown : "✕"}
         </button>
-        <div id={CONTAINER_ID} className="mx-auto max-w-4xl" />
+        <div id={CONTAINER_ID} className="w-full" />
       </div>
     </>
   );
