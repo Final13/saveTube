@@ -76,3 +76,8 @@ jobs:
 
             echo "== pm2 reload =="
             pm2 startOrReload ecosystem.config.js --update-env
+            # Список процессов — в dump.pm2, чтобы resurrect поднял их после ребута
+            pm2 save
+            # Автостарт после ребута VPS: root нет, systemd unit не поставить —
+            # держим @reboot-строку в кроне юзера (идемпотентно)
+            (crontab -l 2>/dev/null | grep -v 'pm2 resurrect'; echo '@reboot export PATH=/var/www/save-tube/data/opt/node22/bin:$PATH && pm2 resurrect') | crontab -
