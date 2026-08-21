@@ -284,6 +284,8 @@ export default function DownloadForm() {
     setDone(false);
     setDownloaded(0);
     setTotal(segments.length);
+    // Фактический старт загрузки — сигнал РСЯ (тест «реклама только при скачивании»)
+    window.dispatchEvent(new Event("savetube-download-started"));
     setSlotStates(Array.from({ length: threadsRef.current }, () => "idle"));
     busySlotsRef.current = new Set();
 

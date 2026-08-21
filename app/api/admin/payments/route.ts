@@ -1,7 +1,7 @@
 import { getAdminEmail } from "@/lib/admin-auth";
 import { getPaymentMethodStats, listPaidYookassaWithoutMethod, listPayments, setPaymentMethod } from "@/lib/payments-store";
 import { getYookassaPayment, paymentMethodLabel } from "@/lib/yookassa";
-import { countActiveRecurrent, listRecurrent } from "@/lib/recurrent-store";
+import { recurrentActiveStats, listRecurrent } from "@/lib/recurrent-store";
 import { getPaymentProvider, setPaymentProvider } from "@/lib/settings-store";
 import { getClientIp, rateLimit } from "@/lib/rate-limit";
 import { trackRequest } from "@/lib/metrics";
@@ -32,7 +32,7 @@ async function handleGet(request: Request) {
     provider: await getPaymentProvider(),
     payments: await listPayments(10),
     recurrent: await listRecurrent(10),
-    recurrentActiveTotal: await countActiveRecurrent(),
+    recurrentActive: await recurrentActiveStats(),
     methodStats: await getPaymentMethodStats(),
   });
 }

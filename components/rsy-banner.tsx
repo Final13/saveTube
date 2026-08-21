@@ -15,6 +15,10 @@ const MIN_WIDTH = 830;
 const ROTATION_MS = 30_000;
 const COUNTDOWN_SECONDS = 5;
 
+// ТЕСТ: реклама включается только после старта скачивания (событие savetube-download-started
+// из download-form). Отключить тест (реклама сразу всем, как было): false.
+const ADS_AFTER_DOWNLOAD_ONLY = true;
+
 declare global {
   interface Window {
     Ya?: {
@@ -37,6 +41,8 @@ declare global {
 export default function RsyBanner() {
   const [open, setOpen] = useState(false);
   const [countdown, setCountdown] = useState(COUNTDOWN_SECONDS);
+  // false — пока не началось скачивание (при ADS_AFTER_DOWNLOAD_ONLY)
+  const [activated, setActivated] = useState(!ADS_AFTER_DOWNLOAD_ONLY);
   const blockIndex = useRef(0);
   const lastBlockId = useRef<string | null>(null);
   const adRendered = useRef(false);
@@ -105,6 +111,14 @@ export default function RsyBanner() {
     return () => document.removeEventListener("visibilitychange", onVisibility);
   }, [renderAd, startRotation]);
 
+  // Тест «реклама после старта скачивания»: ждём событие от download-form
+  useEffect(() => {
+    if (!ADS_AFTER_DOWNLOAD_ONLY) return;
+    const onDownloadStarted = () => setActivated(true);
+    window.addEventListener("savetube-download-started", onDownloadStarted);
+    return () => window.removeEventListener("savetube-download-started", onDownloadStarted);
+  }, []);
+
   // Скрытие/показ при ресайзе
   useEffect(() => {
     if (!RSY_ID) return;
@@ -131,7 +145,7 @@ export default function RsyBanner() {
     [],
   );
 
-  if (!RSY_ID) return null;
+  if (!RSY_ID || !activated) return null;
 
   return (
     <>

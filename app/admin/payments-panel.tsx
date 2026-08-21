@@ -11,7 +11,7 @@ interface Page<T> {
 interface PaymentsData {
   provider: "tbank" | "yookassa";
   methodStats: Array<{ method: string; count: number }>;
-  recurrentActiveTotal: number;
+  recurrentActive: { total: number; byDays: Record<number, number> };
   payments: Page<{
     id: number;
     email: string;
@@ -229,7 +229,11 @@ export default function PaymentsPanel() {
         <>
           <div className="mt-4 rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-4 shadow-sm">
             <h3 className="text-sm font-semibold text-slate-700 dark:text-zinc-200">
-              Автопродления ЮKassa (активных: {data.recurrentActiveTotal})
+              Автопродления (активных: {data.recurrentActive.total}){" "}
+              <span className="font-normal text-slate-500 dark:text-zinc-400">
+                365: {data.recurrentActive.byDays[365] ?? 0} · 30:{" "}
+                {data.recurrentActive.byDays[30] ?? 0} · 7: {data.recurrentActive.byDays[7] ?? 0}
+              </span>
             </h3>
             <table className="mt-2 w-full text-sm">
               <thead>

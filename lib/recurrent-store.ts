@@ -1,4 +1,5 @@
 import { getMysqlClient, tablePrefix } from "@/lib/mysql";
+import { getRate } from "@/lib/rates";
 
 // Рекуррентные подписки ЮKassa, таблица `{prefix}recurrent_subscriptions`.
 // Запись создаётся после первой успешной оплаты с save_payment_method:
@@ -185,16 +186,27 @@ export async function markRecurrentBilled(id: number, nextBillingAt: number): Pr
   );
 }
 
-/** Общее число активных автопродлений (для заголовка админки; не зависит от пагинации). */
-export async function countActiveRecurrent(): Promise<number> {
+/** Активные автопродления: всего + разбивка по длительности тарифа (заголовок админки). */
+export async function recurrentActiveStats(): Promise<{
+  total: number;
+  byDays: Record<number, number>;
+}> {
   await ensureRecurrentSchema();
   const db = getMysqlClient();
-  if (!db) return 0;
+  if (!db) return { total: 0, byDays: {} };
 
   const rows = (await db.query(
-    `SELECT COUNT(*) AS cnt FROM ${recurrentTable()} WHERE active = 1`,
-  )) as Array<{ cnt: number }>;
-  return Number(rows[0]?.cnt ?? 0);
+    `SELECT rate_index, COUNT(*) AS cnt FROM ${recurrentTable()} WHERE active = 1 GROUP BY rate_index`,
+  )) as Array<{ rate_index: number; cnt: number }>;
+
+  const byDays: Record<number, number> = {};
+  let total = 0;
+  for (const row of rows) {
+    const cnt = Number(row.cnt);
+    byDays[getRate(Number(row.rate_index))?.days ?? Number(row.rate_index)] = cnt;
+    total += cnt;
+  }
+  return { total, byDays };
 }
 
 /** Все рекуррентные подписки (для админки), новые первыми, страницами по курсору id. */
