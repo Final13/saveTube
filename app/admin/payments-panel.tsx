@@ -231,8 +231,8 @@ export default function PaymentsPanel() {
             <h3 className="text-sm font-semibold text-slate-700 dark:text-zinc-200">
               Автопродления (активных: {data.recurrentActive.total}){" "}
               <span className="font-normal text-slate-500 dark:text-zinc-400">
-                365: {data.recurrentActive.byDays[365] ?? 0} · 30:{" "}
-                {data.recurrentActive.byDays[30] ?? 0} · 7: {data.recurrentActive.byDays[7] ?? 0}
+                — 365 дней: {data.recurrentActive.byDays[365] ?? 0}, 30 дней:{" "}
+                {data.recurrentActive.byDays[30] ?? 0}, 7 дней: {data.recurrentActive.byDays[7] ?? 0}
               </span>
             </h3>
             <table className="mt-2 w-full text-sm">
