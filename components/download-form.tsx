@@ -426,7 +426,7 @@ export default function DownloadForm() {
             ) : (
               <Download className="size-5" />
             )}
-            Конвертировать
+            Скачать видео
           </button>
         </div>
 
