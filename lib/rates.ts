@@ -7,7 +7,7 @@ export interface Rate {
 
 export const RATES: Rate[] = [
   { days: 7, priceRub: 39, title: "7 дней" },
-  { days: 30, priceRub: 99, title: "30 дней" },
+  { days: 30, priceRub: 89, title: "30 дней" },
   { days: 365, priceRub: 299, title: "365 дней" },
 ];
 

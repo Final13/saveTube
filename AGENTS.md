@@ -47,7 +47,7 @@ Next.js 16 + React 19, App Router, Tailwind v4, lucide-react, алиас `@/`. �
 
 ## Платежи T-Bank (не ломать)
 
-- Тарифы `lib/rates.ts`: 7д/39₽, 30д/99₽, 365д/299₽ — менять только осознанно.
+- Тарифы `lib/rates.ts`: 7д/39₽, 30д/89₽, 365д/299₽ — менять только осознанно.
 - `lib/tbank.ts`: подпись = скалярные поля + `Password`, сортировка ключей case-insensitive, конкатенация, sha256. `Init` с чеком 54-ФЗ (УСН доход, `DATA.PaymentMethod=QR:true`), `GetState` — перепроверка. На dev TLS-проверка банка отключена (антивирус MITM), в проде строгая.
 - Вебхук `app/api/payment/notification`: подпись → `CONFIRMED` → перепроверка `GetState` → идемпотентный `markPaid`. Ответ строго `"OK"`/`"ERROR"` (ERROR = банк пришлёт повтор).
 - Хранилище `lib/payments-store.ts` (MySQL, `lib/mysql.ts` globalThis-синглтон): таблица `{MYSQL_TABLE_PREFIX}payments` (дефолт `wp_`), колонки от старого бэкенда — старые подписки распознаются без миграции. `payment_amount` в РУБЛЯХ (в банк — копейки), `OrderId` = `payment_id`. Таблица самосоздаётся. **Синглтон само-переподключается** (патч `client.query`): на «closed state»/«Connection lost»/ECONNRESET сбрасывается, запрос повторяется раз со свежим клиентом; не откатывать, иначе MySQL-роуты умирают до рестарта.
