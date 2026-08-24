@@ -1,7 +1,7 @@
 import { getAdminEmail } from "@/lib/admin-auth";
 import { getPaymentMethodStats, listPaidYookassaWithoutMethod, listPayments, setPaymentMethod } from "@/lib/payments-store";
 import { getYookassaPayment, paymentMethodLabel } from "@/lib/yookassa";
-import { recurrentActiveStats, listRecurrent } from "@/lib/recurrent-store";
+import { recurrentActiveStats, listRecurrent, backfillRecurrentStreaks } from "@/lib/recurrent-store";
 import { getPaymentProvider, setPaymentProvider } from "@/lib/settings-store";
 import { getClientIp, rateLimit } from "@/lib/rate-limit";
 import { trackRequest } from "@/lib/metrics";
@@ -26,6 +26,10 @@ async function handleGet(request: Request) {
   }
   if (recurrentBefore) {
     return Response.json({ recurrent: await listRecurrent(10, recurrentBefore) });
+  }
+  // Полная выгрузка автопродлений для сортировки на клиенте (админка, записей немного)
+  if (searchParams.get("recurrent_all")) {
+    return Response.json({ recurrent: await listRecurrent(1000) });
   }
 
   return Response.json({
@@ -82,6 +86,16 @@ async function handlePost(request: Request) {
       }
     }
     return Response.json({ ok: true, updated, failed, remaining: missing.length - updated });
+  }
+
+  // Разовый бэкфилл серий успешных автосписаний: пересчёт success_streak
+  // по прошлым оплаченным платежам «(автопродление)» (колонка появилась позже)
+  if (body.action === "backfill-streaks") {
+    const updated = await backfillRecurrentStreaks();
+    if (updated === null) {
+      return Response.json({ message: "MySQL недоступна." }, { status: 503 });
+    }
+    return Response.json({ ok: true, updated });
   }
 
   const provider = body.provider === "yookassa" ? "yookassa" : body.provider === "tbank" ? "tbank" : null;

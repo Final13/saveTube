@@ -13,6 +13,8 @@ export interface RecurrentSubscription {
   card_type: string | null; // например "Mir", "Visa"
   card_last4: string | null;
   active: boolean;
+  /** Сколько успешных автосписаний подряд (сброс при неудачном списании) */
+  success_streak: number;
   next_billing_at: number; // unix ms
   created_at: number | null; // unix ms
 }
@@ -37,6 +39,7 @@ function ensureRecurrentSchema(): Promise<void> {
           card_type VARCHAR(32) NULL,
           card_last4 VARCHAR(4) NULL,
           active TINYINT NOT NULL DEFAULT 1,
+          success_streak INT NOT NULL DEFAULT 0,
           next_billing_at DATETIME NOT NULL,
           created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
           PRIMARY KEY (id),
@@ -57,6 +60,11 @@ function ensureRecurrentSchema(): Promise<void> {
       if (!existing.has("card_last4")) {
         await db.query(`ALTER TABLE ${recurrentTable()} ADD COLUMN card_last4 VARCHAR(4) NULL`);
       }
+      if (!existing.has("success_streak")) {
+        await db.query(
+          `ALTER TABLE ${recurrentTable()} ADD COLUMN success_streak INT NOT NULL DEFAULT 0`,
+        );
+      }
     })();
     schemaPromise.catch(() => {
       schemaPromise = null;
@@ -73,6 +81,7 @@ interface RecurrentRow {
   card_type: string | null;
   card_last4: string | null;
   active: number;
+  success_streak: number;
   next_billing_ms: number;
   created_ms: number | null;
 }
@@ -86,12 +95,13 @@ function parseRow(row: RecurrentRow): RecurrentSubscription {
     card_type: row.card_type ? String(row.card_type) : null,
     card_last4: row.card_last4 ? String(row.card_last4) : null,
     active: Number(row.active) === 1,
+    success_streak: Number(row.success_streak),
     next_billing_at: Number(row.next_billing_ms),
     created_at: row.created_ms ? Number(row.created_ms) : null,
   };
 }
 
-const SELECT_FIELDS = `id, email, rate_index, yookassa_payment_method_id, card_type, card_last4, active,
+const SELECT_FIELDS = `id, email, rate_index, yookassa_payment_method_id, card_type, card_last4, active, success_streak,
   UNIX_TIMESTAMP(next_billing_at) * 1000 AS next_billing_ms,
   UNIX_TIMESTAMP(created_at) * 1000 AS created_ms`;
 
@@ -184,6 +194,44 @@ export async function markRecurrentBilled(id: number, nextBillingAt: number): Pr
     `UPDATE ${recurrentTable()} SET next_billing_at = FROM_UNIXTIME(? / 1000) WHERE id = ?`,
     [nextBillingAt, id],
   );
+}
+
+/** +1 к серии успешных автосписаний (вызывать только при реальной активации продления). */
+export async function bumpRecurrentStreak(email: string): Promise<void> {
+  await ensureRecurrentSchema();
+  const db = getMysqlClient();
+  if (!db) return;
+  await db.query(
+    `UPDATE ${recurrentTable()} SET success_streak = success_streak + 1 WHERE email = ?`,
+    [email],
+  );
+}
+
+/** Сброс серии «подряд» после неудачного списания (canceled). */
+export async function resetRecurrentStreak(id: number): Promise<void> {
+  await ensureRecurrentSchema();
+  const db = getMysqlClient();
+  if (!db) return;
+  await db.query(`UPDATE ${recurrentTable()} SET success_streak = 0 WHERE id = ?`, [id]);
+}
+
+/** Разовый бэкфилл серий: пересчитывает success_streak по оплаченным платежам
+ *  с названием «…(автопродление)» (так помечает продления крон billing).
+ *  Идемпотентно. Возвращает число изменённых строк, null — без MySQL. */
+export async function backfillRecurrentStreaks(): Promise<number | null> {
+  await ensureRecurrentSchema();
+  const db = getMysqlClient();
+  if (!db) return null;
+  const result = (await db.query(
+    `UPDATE ${recurrentTable()} r
+     SET success_streak = (
+       SELECT COUNT(*) FROM ${tablePrefix()}payments p
+       WHERE p.payment_email = r.email
+         AND p.payment_status = 1
+         AND p.payment_title LIKE '%(автопродление)%'
+     )`,
+  )) as { affectedRows?: number };
+  return result.affectedRows ?? 0;
 }
 
 /** Активные автопродления: всего + разбивка по длительности тарифа (заголовок админки). */

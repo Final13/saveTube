@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { ChevronDown, ChevronUp, ChevronsUpDown } from "lucide-react";
 import { RATES } from "@/lib/rates";
 
 interface Page<T> {
@@ -33,6 +34,7 @@ interface PaymentsData {
     card_type: string | null;
     card_last4: string | null;
     active: boolean;
+    success_streak: number;
     next_billing_at: number;
     created_at: number | null;
   }>;
@@ -42,6 +44,16 @@ const PROVIDERS = [
   { key: "tbank" as const, label: "T-Bank", hint: "разовые платежи" },
   { key: "yookassa" as const, label: "ЮKassa", hint: "автопродление" },
 ];
+
+// Колонки таблицы автопродлений, по которым есть сортировка
+type RecurrentSortKey =
+  | "email"
+  | "rate_index"
+  | "method"
+  | "created_at"
+  | "next_billing_at"
+  | "success_streak"
+  | "active";
 
 function rateTitle(index: number): string {
   return RATES[index]?.title ?? `#${index}`;
@@ -83,7 +95,13 @@ export default function PaymentsPanel() {
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [backfilling, setBackfilling] = useState(false);
+  const [backfillingStreaks, setBackfillingStreaks] = useState(false);
   const [loadingMore, setLoadingMore] = useState<"payments" | "recurrent" | null>(null);
+  const [recurrentSort, setRecurrentSort] = useState<{
+    key: RecurrentSortKey;
+    dir: "asc" | "desc";
+  } | null>(null);
+  const [loadingAllRecurrent, setLoadingAllRecurrent] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -172,6 +190,87 @@ export default function PaymentsPanel() {
     }
   }
 
+  // Клик по заголовку: переключает направление; для сортировки догружает ВСЕ записи
+  // (курсорная постраничка несовместима с произвольным ORDER BY, записей немного)
+  async function toggleRecurrentSort(key: RecurrentSortKey) {
+    setRecurrentSort((prev) =>
+      prev?.key === key ? { key, dir: prev.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" },
+    );
+    if (!data?.recurrent.hasMore || loadingAllRecurrent) return;
+    setLoadingAllRecurrent(true);
+    try {
+      const response = await fetch("/api/admin/payments?recurrent_all=1", { cache: "no-store" });
+      if (response.ok) {
+        const body = (await response.json()) as { recurrent?: PaymentsData["recurrent"] };
+        if (body.recurrent) {
+          const all = body.recurrent;
+          setData((prev) => (prev ? { ...prev, recurrent: all } : prev));
+        }
+      }
+    } catch {
+      // не страшно — отсортируется то, что уже загружено
+    } finally {
+      setLoadingAllRecurrent(false);
+    }
+  }
+
+  const recurrentItems = useMemo(() => {
+    if (!data) return [];
+    const items = [...data.recurrent.items];
+    if (!recurrentSort) return items;
+    const dir = recurrentSort.dir === "asc" ? 1 : -1;
+    const value = (r: PaymentsData["recurrent"]["items"][number]): string | number => {
+      switch (recurrentSort.key) {
+        case "email":
+          return r.email;
+        case "rate_index":
+          return r.rate_index;
+        case "method":
+          return methodLabel(r.card_type, r.card_last4);
+        case "created_at":
+          return r.created_at ?? 0;
+        case "next_billing_at":
+          return r.next_billing_at;
+        case "success_streak":
+          return r.success_streak;
+        case "active":
+          return r.active ? 1 : 0;
+      }
+    };
+    items.sort((a, b) => {
+      const va = value(a);
+      const vb = value(b);
+      const cmp = typeof va === "string" ? va.localeCompare(String(vb)) : va - Number(vb);
+      return cmp * dir;
+    });
+    return items;
+  }, [data, recurrentSort]);
+
+  // Заголовок-колонка автопродлений с сортировкой
+  const th = (key: RecurrentSortKey, label: string, className = "py-1 pr-4") => {
+    const active = recurrentSort?.key === key ? recurrentSort : null;
+    return (
+      <th
+        onClick={() => void toggleRecurrentSort(key)}
+        className={`${className} cursor-pointer select-none font-medium transition hover:text-slate-600 dark:hover:text-zinc-300`}
+        title="Нажмите для сортировки"
+      >
+        <span className="inline-flex items-center gap-1">
+          {label}
+          {active ? (
+            active.dir === "asc" ? (
+              <ChevronUp className="size-3.5" />
+            ) : (
+              <ChevronDown className="size-3.5" />
+            )
+          ) : (
+            <ChevronsUpDown className="size-3.5 opacity-40" />
+          )}
+        </span>
+      </th>
+    );
+  };
+
   // Бэкфилл способов оплаты для старых платежей ЮKassa (колонка появилась позже)
   async function backfillMethods() {
     if (backfilling) return;
@@ -192,6 +291,29 @@ export default function PaymentsPanel() {
       setError("Ошибка сети.");
     } finally {
       setBackfilling(false);
+    }
+  }
+
+  // Бэкфилл серий успешных автосписаний по прошлым платежам «(автопродление)»
+  async function backfillStreaks() {
+    if (backfillingStreaks) return;
+    setBackfillingStreaks(true);
+    try {
+      const response = await fetch("/api/admin/payments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "backfill-streaks" }),
+      });
+      if (!response.ok) {
+        const body = (await response.json().catch(() => ({}))) as { message?: string };
+        setError(body.message || "Не удалось подтянуть серии.");
+        return;
+      }
+      await load();
+    } catch {
+      setError("Ошибка сети.");
+    } finally {
+      setBackfillingStreaks(false);
     }
   }
 
@@ -228,30 +350,42 @@ export default function PaymentsPanel() {
       {data && (
         <>
           <div className="mt-4 rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-4 shadow-sm">
-            <h3 className="text-sm font-semibold text-slate-700 dark:text-zinc-200">
+            <h3 className="flex items-center gap-3 text-sm font-semibold text-slate-700 dark:text-zinc-200">
               Автопродления (активных: {data.recurrentActive.total}){" "}
               <span className="font-normal text-slate-500 dark:text-zinc-400">
                 — 365 дней: {data.recurrentActive.byDays[365] ?? 0}, 30 дней:{" "}
                 {data.recurrentActive.byDays[30] ?? 0}, 7 дней: {data.recurrentActive.byDays[7] ?? 0}
               </span>
+              <button
+                onClick={() => void backfillStreaks()}
+                disabled={backfillingStreaks}
+                title="Пересчитать «Успешных подряд» по прошлым платежам «(автопродление)»"
+                className="rounded-md border border-sky-600 px-2 py-0.5 text-xs font-medium text-sky-700 dark:text-sky-400 transition hover:bg-sky-50 dark:hover:bg-sky-950 disabled:opacity-60"
+              >
+                {backfillingStreaks ? "Подтягиваю…" : "Подтянуть серии"}
+              </button>
             </h3>
             <table className="mt-2 w-full text-sm">
               <thead>
                 <tr className="text-left text-xs text-slate-400">
-                  <th className="py-1 pr-4 font-medium">Email</th>
-                  <th className="py-1 pr-4 font-medium">Тариф</th>
-                  <th className="py-1 pr-4 font-medium">Способ</th>
-                  <th className="py-1 pr-4 font-medium">Следующее списание</th>
-                  <th className="py-1 font-medium">Статус</th>
+                  {th("email", "Email")}
+                  {th("rate_index", "Тариф")}
+                  {th("method", "Способ")}
+                  {th("created_at", "Дата подписки")}
+                  {th("next_billing_at", "Следующее списание")}
+                  {th("success_streak", "Успешных подряд")}
+                  {th("active", "Статус", "py-1")}
                 </tr>
               </thead>
               <tbody>
-                {data.recurrent.items.map((r) => (
+                {recurrentItems.map((r) => (
                   <tr key={r.id} className="border-t border-slate-100 dark:border-zinc-800 text-slate-700 dark:text-zinc-200">
                     <td className="py-1.5 pr-4">{r.email}</td>
                     <td className="py-1.5 pr-4">{rateTitle(r.rate_index)}</td>
                     <td className="py-1.5 pr-4">{methodLabel(r.card_type, r.card_last4)}</td>
+                    <td className="py-1.5 pr-4">{formatDate(r.created_at)}</td>
                     <td className="py-1.5 pr-4">{formatDate(r.next_billing_at)}</td>
+                    <td className="py-1.5 pr-4">{r.success_streak}</td>
                     <td
                       className={`py-1.5 ${r.active ? "text-emerald-600 dark:text-emerald-400" : "text-slate-400"}`}
                     >
@@ -259,16 +393,19 @@ export default function PaymentsPanel() {
                     </td>
                   </tr>
                 ))}
-                {data.recurrent.items.length === 0 && (
+                {recurrentItems.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="py-3 text-center text-slate-400">
+                    <td colSpan={7} className="py-3 text-center text-slate-400">
                       Пока нет автопродлений
                     </td>
                   </tr>
                 )}
               </tbody>
             </table>
-            {data.recurrent.hasMore && (
+            {loadingAllRecurrent && (
+              <p className="mt-2 text-xs text-slate-400">Загружаю все записи для сортировки…</p>
+            )}
+            {data.recurrent.hasMore && !recurrentSort && (
               <button
                 onClick={() => void loadMore("recurrent")}
                 disabled={loadingMore === "recurrent"}

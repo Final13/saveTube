@@ -19,7 +19,7 @@ export default function HomePage() {
     <>
       <section className="py-10 text-center sm:py-14">
         <h1 className="mx-auto max-w-3xl text-3xl font-bold sm:text-4xl">
-          Скачать видео с RuTube бесплатно и без программ
+          Скачать видео с RuTube
         </h1>
         <p className="mx-auto mt-4 max-w-2xl text-zinc-600 dark:text-zinc-400">
           Вставьте ссылку на видео в указанное поле и нажмите «Скачать видео». Система предложит

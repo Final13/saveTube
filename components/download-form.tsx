@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { CircleAlert, Download, Loader2, Lock, Minus, Pause, Plus, X, Zap } from "lucide-react";
+import { CircleAlert, Download, Loader2, Lock, Minus, Pause, Plus, X } from "lucide-react";
 import PremiumModal from "@/components/premium-modal";
+import SpeedoIcon from "@/components/speedo-icon";
 import { buildProxyUrl } from "@/lib/proxy-nodes";
 
 interface VideoMetadata {
@@ -596,7 +597,7 @@ export default function DownloadForm() {
                 }}
                 className="flex items-center gap-1.5 rounded-lg bg-sky-600 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-sky-700"
               >
-                <Zap className="size-4 fill-yellow-400 text-yellow-400" /> Ускорить
+                <SpeedoIcon className="size-6 text-amber-400" /> Ускорить
               </button>
             )}
           </div>

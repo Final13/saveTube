@@ -1,7 +1,7 @@
 import { after } from "next/server";
 import { getRate } from "@/lib/rates";
 import { getPayment, markPaid } from "@/lib/payments-store";
-import { upsertRecurrent } from "@/lib/recurrent-store";
+import { bumpRecurrentStreak, upsertRecurrent } from "@/lib/recurrent-store";
 import { sendPaymentSuccessEmail } from "@/lib/email";
 import { isAdminEmail } from "@/lib/admin-auth";
 import { SITE_URL } from "@/lib/site";
@@ -65,6 +65,7 @@ export interface YookassaPayment {
   id: string;
   status: "pending" | "waiting_for_capture" | "succeeded" | "canceled";
   paid: boolean;
+  cancellation_details?: { reason?: string; party?: string; description?: string };
   confirmation?: { type: string; confirmation_url?: string };
   payment_method?: {
     id: string;
@@ -234,6 +235,13 @@ export async function activateYookassaPayment(yk: YookassaPayment): Promise<numb
       cardLast4: yk.payment_method.card?.last4 ?? null,
       nextBillingAt: until,
     });
+  }
+
+  // Серия успешных автосписаний: +1 только при реальной активации продления
+  // (activated — markPaid идемпотентен, повторные вебхуки/самолечение не накручивают).
+  // Продление помечено metadata.renewal у createRecurrentCharge.
+  if (activated && yk.metadata?.renewal === "true") {
+    await bumpRecurrentStreak(payment.email);
   }
 
   return payment.id;

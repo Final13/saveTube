@@ -1,12 +1,37 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Loader2, X, Zap } from "lucide-react";
+import { Ban, Gauge, Loader2, MonitorPlay, MonitorSmartphone, X, Zap } from "lucide-react";
 import { RATES } from "@/lib/rates";
+import SpeedoIcon from "@/components/speedo-icon";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const POLL_INTERVAL_MS = 5000;
 const POLL_MAX_ATTEMPTS = 25; // ~2 минуты ожидания оплаты
+
+// При открытии модалки по умолчанию выбран месячный тариф
+const DEFAULT_RATE_INDEX = Math.max(
+  0,
+  RATES.findIndex((r) => r.days === 30),
+);
+
+// Бенефиты подписки на экране тарифов
+const BENEFITS = [
+  { icon: MonitorPlay, text: "Скачивание в 4K-качестве" },
+  { icon: Gauge, text: "Увеличенная скорость загрузки" },
+  { icon: Ban, text: "Без рекламы на сайте" },
+  { icon: MonitorSmartphone, text: "Работает на всех устройствах" },
+  { icon: Zap, text: "Ускорение сразу после оплаты" },
+];
+
+// Бейджики способов оплаты (файлы в public/payments)
+const PAYMENT_BADGES = [
+  { src: "/payments/card.svg", alt: "Банковская карта" },
+  { src: "/payments/sbp.svg", alt: "СБП" },
+  { src: "/payments/tpay.svg", alt: "T-Pay" },
+  { src: "/payments/sberpay.svg", alt: "SberPay" },
+  { src: "/payments/umoney.svg", alt: "ЮMoney" },
+];
 
 type Screen = "default" | "wait" | "success" | "error" | "confirm" | "confirm-success";
 
@@ -31,7 +56,7 @@ export default function PremiumModal({
 }: PremiumModalProps) {
   // Компонент перемонтируется по key при каждом открытии — начальные состояния считаем на маунте
   const [screen, setScreen] = useState<Screen>(initialScreen);
-  const [rateIndex, setRateIndex] = useState<number | null>(null);
+  const [rateIndex, setRateIndex] = useState<number>(DEFAULT_RATE_INDEX);
   const [email, setEmail] = useState(getEmailCookie);
   const [checkEmail, setCheckEmail] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -102,7 +127,6 @@ export default function PremiumModal({
 
   const handlePay = async () => {
     setError(null);
-    if (rateIndex === null) return;
 
     let query: string;
     let bindEmail: string;
@@ -167,7 +191,7 @@ export default function PremiumModal({
   const reset = () => {
     stopPolling();
     setScreen("default");
-    setRateIndex(null);
+    setRateIndex(DEFAULT_RATE_INDEX);
     setError(null);
     setCheckEmail("");
   };
@@ -184,10 +208,10 @@ export default function PremiumModal({
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
       onClick={(e) => e.target === e.currentTarget && close()}
     >
-      <div className="w-full max-w-md space-y-4 rounded-xl bg-white p-6 shadow-xl dark:bg-zinc-900">
+      <div className="max-h-[90vh] w-full max-w-md space-y-3 overflow-y-auto rounded-xl bg-white p-6 shadow-xl dark:bg-zinc-900">
         <div className="flex items-start justify-between">
           <p className="flex items-center gap-2 text-lg font-semibold">
-            <Zap className="size-5 text-amber-500" /> Ускорить загрузку
+            <SpeedoIcon className="size-10 -mt-1 text-amber-500" /> Ускорить загрузку
           </p>
           <button onClick={close} aria-label="Закрыть">
             <X className="size-5 text-zinc-400 dark:text-zinc-500 transition hover:text-zinc-700" />
@@ -196,27 +220,53 @@ export default function PremiumModal({
 
         {screen === "default" && (
           <>
-            <p className="text-sm text-zinc-600 dark:text-zinc-400">
-              Подписка открывает скачивание в 4K, позволит увеличить количество потоков и
-              отключит рекламу на сайте.
-            </p>
-            <p className="text-center text-base font-semibold">Выберите подписку</p>
-            <div className="grid grid-cols-3 gap-2">
-              {RATES.map((rate, i) => (
-                <button
-                  key={rate.title}
-                  onClick={() => setRateIndex(i)}
-                  className={`rounded-lg border p-3 text-center transition ${
-                    rateIndex === i
-                      ? "border-sky-600 bg-sky-50 ring-1 ring-sky-600 dark:border-sky-500 dark:bg-sky-950 dark:ring-sky-500"
-                      : "border-zinc-200 hover:border-zinc-400 dark:border-zinc-700 dark:hover:border-zinc-500"
-                  }`}
-                >
-                  <p className="text-sm font-semibold">{rate.title}</p>
-                  <p className="text-sm text-zinc-500 dark:text-zinc-400">{rate.priceRub} рублей</p>
-                </button>
-              ))}
+            <div className="flex gap-2">
+              {RATES.map((rate, i) =>
+                rate.hidden ? null : (
+                  <button
+                    key={rate.title}
+                    onClick={() => setRateIndex(i)}
+                    className={`flex-1 rounded-lg border p-3 text-center transition flex flex-col ${
+                      rate.oldPriceRub ? "" : "justify-center"
+                    } ${
+                      rateIndex === i
+                        ? "border-sky-600 bg-sky-50 ring-1 ring-sky-600 dark:border-sky-500 dark:bg-sky-950 dark:ring-sky-500"
+                        : "border-zinc-200 hover:border-zinc-400 dark:border-zinc-700 dark:hover:border-zinc-500"
+                    }`}
+                  >
+                    {/* Строка скидки — только у тарифа со старой ценой;
+                        у остальных цена с длительностью центрируются по вертикали */}
+                    {rate.oldPriceRub ? (
+                      <span className="flex h-5 items-center justify-center gap-1">
+                        <span className="text-xs text-zinc-400 line-through dark:text-zinc-500">
+                          {rate.oldPriceRub} ₽
+                        </span>
+                        <span className="rounded-full bg-amber-100 px-1.5 text-[10px] font-semibold leading-5 text-amber-700 dark:bg-amber-950 dark:text-amber-400">
+                          -{Math.floor((1 - rate.priceRub / rate.oldPriceRub) * 100)}%
+                        </span>
+                      </span>
+                    ) : null}
+                    <span className="block text-xl font-bold text-sky-700 dark:text-sky-400">
+                      {rate.priceRub} ₽
+                    </span>
+                    <span className="block text-xs text-zinc-500 dark:text-zinc-400">
+                      на {rate.title}
+                    </span>
+                  </button>
+                ),
+              )}
             </div>
+            <ul className="space-y-1.5">
+              {BENEFITS.map(({ icon: Icon, text }) => (
+                <li
+                  key={text}
+                  className="flex items-center gap-2 text-sm text-zinc-700 dark:text-zinc-300"
+                >
+                  <Icon className="size-4 shrink-0 text-sky-600 dark:text-sky-500" />
+                  {text}
+                </li>
+              ))}
+            </ul>
             {provider === "yookassa" && (
               <p className="text-left text-base leading-[1.6] text-zinc-500 dark:text-zinc-400">
                 Автоматическое продление подписки. Можно отключить в любой момент в личном кабинете.
@@ -237,7 +287,35 @@ export default function PremiumModal({
                 На этот e-mail придёт чек.
               </p>
             )}
-            <p className="text-left text-[14px] leading-[1.6] text-zinc-500 dark:text-zinc-400">
+            {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+            <button
+              onClick={handlePay}
+              disabled={loading}
+              className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-sky-600 font-semibold text-white transition hover:bg-sky-700 disabled:opacity-60"
+            >
+              {loading ? <Loader2 className="size-5 animate-spin" /> : null}
+              Оплатить
+            </button>
+            <div className="flex items-center justify-center gap-1.5">
+              {PAYMENT_BADGES.map((badge) => (
+                <span
+                  key={badge.alt}
+                  className="flex h-8 w-16 items-center justify-center rounded-md border border-zinc-300 bg-white px-1.5 dark:border-zinc-700 dark:bg-zinc-800"
+                >
+                  <img src={badge.src} alt={badge.alt} className="h-5 w-auto" />
+                </span>
+              ))}
+            </div>
+            <button
+              onClick={() => {
+                setError(null);
+                setScreen("confirm");
+              }}
+              className="w-full text-center text-sm text-sky-700 dark:text-sky-400 underline hover:text-sky-800 dark:hover:text-sky-300"
+            >
+              Я уже купил подписку
+            </button>
+            <p className="text-left text-xs leading-[1.6] text-zinc-500 dark:text-zinc-400">
               {/* Без сессии оплата = регистрация, с сессией — просто оплата */}
               {sessionEmail ? "Оплачивая" : "Регистрируясь"}, вы соглашаетесь с{" "}
               <a
@@ -259,24 +337,6 @@ export default function PremiumModal({
               </a>
               .
             </p>
-            {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
-            <button
-              onClick={handlePay}
-              disabled={rateIndex === null || loading}
-              className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-sky-600 font-semibold text-white transition hover:bg-sky-700 disabled:opacity-60"
-            >
-              {loading ? <Loader2 className="size-5 animate-spin" /> : null}
-              Оплатить
-            </button>
-            <button
-              onClick={() => {
-                setError(null);
-                setScreen("confirm");
-              }}
-              className="w-full text-center text-sm text-sky-700 dark:text-sky-400 underline hover:text-sky-800 dark:hover:text-sky-300"
-            >
-              Я уже купил подписку
-            </button>
           </>
         )}
 

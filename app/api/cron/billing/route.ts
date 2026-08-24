@@ -1,8 +1,10 @@
 import { getRate } from "@/lib/rates";
 import { createPayment, setMerchantId } from "@/lib/payments-store";
 import {
+  deleteRecurrent,
   getDueRecurrent,
   postponeRecurrent,
+  resetRecurrentStreak,
 } from "@/lib/recurrent-store";
 import { getPaymentProvider } from "@/lib/settings-store";
 import { activateYookassaPayment, createRecurrentCharge } from "@/lib/yookassa";
@@ -64,7 +66,23 @@ async function handleGet(request: Request) {
         // Ждём вебхук; следующая проверка — через час, вебхук сдвинет дату при успехе
         await postponeRecurrent(sub.id, 60 * 60 * 1000);
         results.push({ id: sub.id, email: sub.email, result: "pending" });
+      } else if (
+        yk.status === "canceled" &&
+        (yk.cancellation_details?.reason ?? "").includes("revoked")
+      ) {
+        // Разрешение на рекуррент отозвано (покупателем в банке / удалением метода) —
+        // метод мёртв навсегда, суточные ретраи бессмысленны: отвязываем, как
+        // «Отвязать карту» в ЛК. Оплаченный срок подписки сохраняется.
+        await deleteRecurrent(sub.email);
+        results.push({
+          id: sub.id,
+          email: sub.email,
+          result: `canceled: ${yk.cancellation_details?.reason}, recurrent removed`,
+        });
       } else {
+        // Неудачное списание (canceled без revoked и прочие статусы) — ретрай через
+        // сутки; реальный отказ по платежу прерывает серию «успешных подряд»
+        if (yk.status === "canceled") await resetRecurrentStreak(sub.id);
         await postponeRecurrent(sub.id, RETRY_FAILED_MS);
         results.push({ id: sub.id, email: sub.email, result: `status ${yk.status}` });
       }

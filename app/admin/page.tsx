@@ -16,7 +16,8 @@ export default async function AdminPage() {
   const email = await getAdminEmail();
 
   return (
-    <div className="py-10">
+    // Шире основного контейнера (max-w-4xl в layout): breakout на всю ширину до 6xl
+    <div className="relative left-1/2 w-[calc(100vw-2rem)] max-w-6xl -translate-x-1/2 py-10">
       <h1 className="text-2xl font-bold text-slate-900 dark:text-zinc-100">Метрики сервиса</h1>
       {email ? (
         <>
