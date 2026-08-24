@@ -217,21 +217,32 @@ export async function resetRecurrentStreak(id: number): Promise<void> {
 
 /** Разовый бэкфилл серий: пересчитывает success_streak по оплаченным платежам
  *  с названием «…(автопродление)» (так помечает продления крон billing).
- *  Идемпотентно. Возвращает число изменённых строк, null — без MySQL. */
+ *  Два шага: агрегация платежей → UPDATE по email-параметру. Без кросс-табличного
+ *  сравнения строк: payments — от старого бэкенда, коллации колонок могут
+ *  отличаться, JOIN/подзапрос падает с «Illegal mix of collations».
+ *  Идемпотентно (полный пересчёт). Число обновлённых строк, null — без MySQL. */
 export async function backfillRecurrentStreaks(): Promise<number | null> {
   await ensureRecurrentSchema();
   const db = getMysqlClient();
   if (!db) return null;
-  const result = (await db.query(
-    `UPDATE ${recurrentTable()} r
-     SET success_streak = (
-       SELECT COUNT(*) FROM ${tablePrefix()}payments p
-       WHERE p.payment_email = r.email
-         AND p.payment_status = 1
-         AND p.payment_title LIKE '%(автопродление)%'
-     )`,
-  )) as { affectedRows?: number };
-  return result.affectedRows ?? 0;
+
+  const counts = (await db.query(
+    `SELECT payment_email AS email, COUNT(*) AS cnt FROM ${tablePrefix()}payments
+     WHERE payment_status = 1 AND payment_title LIKE '%(автопродление)%'
+     GROUP BY payment_email`,
+  )) as Array<{ email: string; cnt: number }>;
+
+  await db.query(`UPDATE ${recurrentTable()} SET success_streak = 0`);
+
+  let updated = 0;
+  for (const row of counts) {
+    const result = (await db.query(
+      `UPDATE ${recurrentTable()} SET success_streak = ? WHERE email = ?`,
+      [Number(row.cnt), String(row.email)],
+    )) as { affectedRows?: number };
+    updated += result.affectedRows ?? 0;
+  }
+  return updated;
 }
 
 /** Активные автопродления: всего + разбивка по длительности тарифа (заголовок админки). */

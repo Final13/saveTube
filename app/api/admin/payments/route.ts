@@ -91,11 +91,18 @@ async function handlePost(request: Request) {
   // Разовый бэкфилл серий успешных автосписаний: пересчёт success_streak
   // по прошлым оплаченным платежам «(автопродление)» (колонка появилась позже)
   if (body.action === "backfill-streaks") {
-    const updated = await backfillRecurrentStreaks();
-    if (updated === null) {
-      return Response.json({ message: "MySQL недоступна." }, { status: 503 });
+    try {
+      const updated = await backfillRecurrentStreaks();
+      if (updated === null) {
+        return Response.json({ message: "MySQL недоступна." }, { status: 503 });
+      }
+      return Response.json({ ok: true, updated });
+    } catch (error) {
+      // Текст ошибки — в админку и pm2-лог (роут только для админа)
+      console.error("Backfill streaks failed:", error);
+      const message = error instanceof Error ? error.message : "Ошибка бэкфилла.";
+      return Response.json({ message }, { status: 502 });
     }
-    return Response.json({ ok: true, updated });
   }
 
   const provider = body.provider === "yookassa" ? "yookassa" : body.provider === "tbank" ? "tbank" : null;
