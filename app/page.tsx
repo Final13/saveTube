@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import DownloadForm from "@/components/download-form";
 import FormTabs from "@/components/form-tabs";
+import { getSession } from "@/lib/auth/session";
+import { getPaymentProvider } from "@/lib/settings-store";
 import { SITE_DESCRIPTION } from "@/lib/site";
 
 export const metadata: Metadata = {
@@ -14,7 +16,12 @@ export const metadata: Metadata = {
   },
 };
 
-export default function HomePage() {
+export default async function HomePage() {
+  // SSR-данные модалки оплаты: email сессии и провайдер — чтобы фраза
+  // об автопродлении и юр-строка не вспыхивали после открытия модалки
+  const session = await getSession();
+  const provider = await getPaymentProvider();
+
   return (
     <>
       <section className="py-10 text-center sm:py-14">
@@ -26,7 +33,7 @@ export default function HomePage() {
           доступные форматы, после чего вы сможете загрузить файл на своё устройство.
         </p>
         <div className="mx-auto mt-8 max-w-2xl">
-          <DownloadForm />
+          <DownloadForm sessionEmail={session.email ?? null} provider={provider} />
         </div>
         <p className="mt-4 text-sm text-zinc-500 dark:text-zinc-400">
           Скачивая видео, вы соглашаетесь с{" "}

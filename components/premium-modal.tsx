@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Ban, Gauge, Loader2, MonitorPlay, MonitorSmartphone, X, Zap } from "lucide-react";
 import { RATES } from "@/lib/rates";
+import type { PaymentProvider } from "@/lib/settings-store";
 import SpeedoIcon from "@/components/speedo-icon";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -38,6 +39,10 @@ type Screen = "default" | "wait" | "success" | "error" | "confirm" | "confirm-su
 interface PremiumModalProps {
   open: boolean;
   initialScreen?: Screen;
+  /** Email аккаунта из серверной сессии (null — не залогинен): привязка подписки, юр-строка */
+  sessionEmail: string | null;
+  /** Платёжный провайдер с сервера: фраза об автопродлении — только при yookassa */
+  provider: PaymentProvider | null;
   onClose: () => void;
   onActivated: () => void;
 }
@@ -51,43 +56,24 @@ function getEmailCookie(): string {
 export default function PremiumModal({
   open,
   initialScreen = "default",
+  sessionEmail,
+  provider,
   onClose,
   onActivated,
 }: PremiumModalProps) {
   // Компонент перемонтируется по key при каждом открытии — начальные состояния считаем на маунте
   const [screen, setScreen] = useState<Screen>(initialScreen);
   const [rateIndex, setRateIndex] = useState<number>(DEFAULT_RATE_INDEX);
-  const [email, setEmail] = useState(getEmailCookie);
+  // Залогинен — email аккаунта (инпут = «email для чека», дефолт тот же), иначе — device-cookie
+  const [email, setEmail] = useState(() => sessionEmail ?? getEmailCookie());
   const [checkEmail, setCheckEmail] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [sessionEmail, setSessionEmail] = useState<string | null>(null);
-  const [provider, setProvider] = useState<string | null>(null);
   const pollCount = useRef(0);
   const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Если юзер залогинен — узнаём email аккаунта: подписка привяжется к нему,
-  // а инпут становится полем «email для чека» (дефолт — тот же email)
-  useEffect(() => {
-    fetch("/api/auth/me")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (data?.email) {
-          setSessionEmail(data.email);
-          setEmail(data.email);
-        }
-      })
-      .catch(() => {});
-  }, []);
-
-  // Провайдер оплаты: фразу об автопродлении показываем только при рекурренте (ЮKassa),
-  // при разовых платежах T-Bank она была бы неправдой. Не ответил — скрываем.
-  useEffect(() => {
-    fetch("/api/payment/provider")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => setProvider(data?.provider ?? null))
-      .catch(() => {});
-  }, []);
+  // Сессия и провайдер приходят SSR-пропсами от страницы — без fetch на маунте,
+  // иначе фраза об автопродлении и юр-строка вспыхивают с задержкой при каждом открытии.
 
   const stopPolling = () => {
     if (pollTimer.current) clearInterval(pollTimer.current);

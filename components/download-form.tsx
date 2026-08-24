@@ -5,6 +5,7 @@ import { CircleAlert, Download, Loader2, Lock, Minus, Pause, Plus, X } from "luc
 import PremiumModal from "@/components/premium-modal";
 import SpeedoIcon from "@/components/speedo-icon";
 import { buildProxyUrl } from "@/lib/proxy-nodes";
+import type { PaymentProvider } from "@/lib/settings-store";
 
 interface VideoMetadata {
   title: string;
@@ -80,7 +81,14 @@ async function pollSegmentsTask(
   throw new Error("RuTube отвечает слишком долго, попробуйте позже.");
 }
 
-export default function DownloadForm() {
+export default function DownloadForm({
+  sessionEmail,
+  provider,
+}: {
+  /** Email сессии и платёжный провайдер — SSR-пропсы для модалки оплаты (без fetch при открытии) */
+  sessionEmail: string | null;
+  provider: PaymentProvider | null;
+}) {
   const [url, setUrl] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -618,6 +626,8 @@ export default function DownloadForm() {
         key={`${premiumOpen}-${premiumScreen}`}
         open={premiumOpen}
         initialScreen={premiumScreen}
+        sessionEmail={sessionEmail}
+        provider={provider}
         onClose={() => setPremiumOpen(false)}
         onActivated={activatePremium}
       />
