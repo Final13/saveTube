@@ -262,6 +262,28 @@ export interface PaymentMethodStat {
   count: number;
 }
 
+// Типы карт ЮKassa (если last4 не пришёл, метка — просто тип карты)
+const CARD_TYPES = new Set([
+  "visa", "mastercard", "mir", "маэстро", "maestro", "unionpay", "jcb",
+  "americanexpress", "dinersclub", "unknown",
+]);
+
+/** Нормализация способа оплаты в метку корзины (общая для разбивки и графиков):
+ *  все карты (с last4 и без) → «Банковская карта», NULL → T-Bank / «ЮKassa — без данных». */
+function methodBasketLabel(methodFull: string | null, provider: string | null): string {
+  const full = methodFull ? String(methodFull).trim() : "";
+  if (!full) return provider === "yookassa" ? "ЮKassa — без данных" : "T-Bank";
+  // карта с last4 ("Visa •• 1234") или карта без данных о типе/last4
+  if (
+    full.includes(" ••") ||
+    full === "Банковская карта" ||
+    CARD_TYPES.has(full.toLowerCase().replace(/[\s-]/g, ""))
+  ) {
+    return "Банковская карта";
+  }
+  return full;
+}
+
 /** Разбивка оплаченных платежей по способам оплаты (все время, для админки).
  *  Все карты (Visa, MasterCard, Mir...) схлопываются в «Банковская карта». */
 export async function getPaymentMethodStats(): Promise<PaymentMethodStat[]> {
@@ -277,29 +299,192 @@ export async function getPaymentMethodStats(): Promise<PaymentMethodStat[]> {
   )) as Array<{ method_full: string | null; provider: string | null; cnt: number }>;
 
   const merged = new Map<string, number>();
-  // Типы карт ЮKassa (если last4 не пришёл, метка — просто тип карты)
-  const cardTypes = new Set([
-    "visa", "mastercard", "mir", "маэстро", "maestro", "unionpay", "jcb",
-    "americanexpress", "dinersclub", "unknown",
-  ]);
   for (const row of rows) {
-    const full = row.method_full ? String(row.method_full).trim() : "";
-    let label: string;
-    if (!full) {
-      label = row.provider === "yookassa" ? "ЮKassa — без данных" : "T-Bank";
-    } else if (
-      full.includes(" ••") ||
-      full === "Банковская карта" ||
-      cardTypes.has(full.toLowerCase().replace(/[\s-]/g, ""))
-    ) {
-      // карта с last4 ("Visa •• 1234") или карта без данных о типе/last4
-      label = "Банковская карта";
-    } else {
-      label = full;
-    }
+    const label = methodBasketLabel(row.method_full, row.provider);
     merged.set(label, (merged.get(label) ?? 0) + Number(row.cnt));
   }
   return Array.from(merged, ([method, count]) => ({ method, count })).sort((a, b) => b.count - a.count);
+}
+
+export interface SubscriptionDayStat {
+  date: string; // "YYYY-MM-DD"
+  /** Новые подписки: оплаченные платежи без «(автопродление)» в названии */
+  newSubs: number;
+  /** Успешные автопродления (название «…(автопродление)» ставит крон billing) */
+  renewals: number;
+  /** Новые подписки по тарифам (rate_index → шт) — спрос на конкретные тарифы */
+  newSubsByRate: Record<number, number>;
+  /** Все оплаченные платежи дня по способам оплаты (метка корзины → шт) */
+  paymentsByMethod: Record<string, number>;
+}
+
+export interface RateDemandStat {
+  rateIndex: number;
+  current: number;
+  prev: number;
+}
+
+export interface MethodDemandStat {
+  method: string; // метка корзины: «Банковская карта», «SberPay», «T-Bank»...
+  current: number;
+  prev: number;
+}
+
+export interface SubscriptionStats {
+  /** Все дни периода по порядку, включая нулевые */
+  days: SubscriptionDayStat[];
+  newSubsTotal: number;
+  renewalsTotal: number;
+  /** Итоги за такой же по длине период ДО текущего — для оценки роста */
+  prevNewSubsTotal: number;
+  prevRenewalsTotal: number;
+  /** Спрос по тарифам: итоги текущего и предыдущего периода (только тарифы с продажами) */
+  rateDemand: RateDemandStat[];
+  /** Спрос на способы оплаты: итоги текущего и предыдущего периода, по убыванию */
+  methodDemand: MethodDemandStat[];
+}
+
+/** Динамика подписок по дням для админки: новые vs автопродления, разбивка новых
+ *  по тарифам, всех платежей — по способам оплаты + итоги предыдущего такого же
+ *  периода (рост в %). Даты — по TZ MySQL-сервера (на VPS совпадает с app).
+ *  null — без MySQL. */
+export async function getSubscriptionStats(days = 30): Promise<SubscriptionStats | null> {
+  await ensurePaymentsSchema();
+  const db = getMysqlClient();
+  if (!db) return null;
+
+  const windowDays = Math.max(1, Math.min(365, Math.floor(days) || 30));
+  // Интервал — литералом: значение проверено целое, а `INTERVAL ? DAY` с плейсхолдером
+  // у mysqljs/MySQL ведёт себя нестабильно. Берём двойное окно — для «предыдущего» периода.
+  const rows = (await db.query(
+    `SELECT DATE_FORMAT(payment_created_at, '%Y-%m-%d') AS d,
+            payment_rate_index AS rate,
+            SUM(payment_title LIKE '%(автопродление)%') AS renewals,
+            SUM(payment_title NOT LIKE '%(автопродление)%') AS new_subs
+     FROM ${paymentsTable()}
+     WHERE payment_status = 1
+       AND payment_created_at >= CURDATE() - INTERVAL ${windowDays * 2} DAY
+     GROUP BY DATE(payment_created_at), payment_rate_index`,
+  )) as Array<{ d: string; rate: number; renewals: number; new_subs: number }>;
+
+  // Способы оплаты по дням — все оплаченные платежи (и новые, и продления)
+  const methodRows = (await db.query(
+    `SELECT DATE_FORMAT(payment_created_at, '%Y-%m-%d') AS d,
+            payment_method AS method_full, payment_provider AS provider, COUNT(*) AS cnt
+     FROM ${paymentsTable()}
+     WHERE payment_status = 1
+       AND payment_created_at >= CURDATE() - INTERVAL ${windowDays * 2} DAY
+     GROUP BY DATE(payment_created_at), method_full, provider`,
+  )) as Array<{ d: string; method_full: string | null; provider: string | null; cnt: number }>;
+
+  interface DayBucket {
+    newSubs: number;
+    renewals: number;
+    byRate: Map<number, number>;
+  }
+  const byDate = new Map<string, DayBucket>();
+  for (const row of rows) {
+    const dateKey = String(row.d);
+    let bucket = byDate.get(dateKey);
+    if (!bucket) {
+      bucket = { newSubs: 0, renewals: 0, byRate: new Map() };
+      byDate.set(dateKey, bucket);
+    }
+    bucket.newSubs += Number(row.new_subs);
+    bucket.renewals += Number(row.renewals);
+    const rate = Number(row.rate);
+    bucket.byRate.set(rate, (bucket.byRate.get(rate) ?? 0) + Number(row.new_subs));
+  }
+
+  const methodsByDate = new Map<string, Map<string, number>>();
+  for (const row of methodRows) {
+    const dateKey = String(row.d);
+    let bucket = methodsByDate.get(dateKey);
+    if (!bucket) {
+      bucket = new Map();
+      methodsByDate.set(dateKey, bucket);
+    }
+    const label = methodBasketLabel(row.method_full, row.provider);
+    bucket.set(label, (bucket.get(label) ?? 0) + Number(row.cnt));
+  }
+
+  const keyOf = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const today = new Date();
+
+  const daysList: SubscriptionDayStat[] = [];
+  const currentByRate = new Map<number, number>();
+  const prevByRate = new Map<number, number>();
+  const currentByMethod = new Map<string, number>();
+  const prevByMethod = new Map<string, number>();
+  let newSubsTotal = 0;
+  let renewalsTotal = 0;
+  let prevNewSubsTotal = 0;
+  let prevRenewalsTotal = 0;
+  for (let i = windowDays * 2 - 1; i >= 0; i--) {
+    const date = new Date(today.getFullYear(), today.getMonth(), today.getDate() - i);
+    const dateKey = keyOf(date);
+    const bucket = byDate.get(dateKey);
+    const methodBucket = methodsByDate.get(dateKey);
+    const newSubs = bucket?.newSubs ?? 0;
+    const renewals = bucket?.renewals ?? 0;
+    if (i >= windowDays) {
+      prevNewSubsTotal += newSubs;
+      prevRenewalsTotal += renewals;
+      bucket?.byRate.forEach((count, rate) => {
+        prevByRate.set(rate, (prevByRate.get(rate) ?? 0) + count);
+      });
+      methodBucket?.forEach((count, method) => {
+        prevByMethod.set(method, (prevByMethod.get(method) ?? 0) + count);
+      });
+    } else {
+      const newSubsByRate: Record<number, number> = {};
+      bucket?.byRate.forEach((count, rate) => {
+        newSubsByRate[rate] = count;
+        currentByRate.set(rate, (currentByRate.get(rate) ?? 0) + count);
+      });
+      const paymentsByMethod: Record<string, number> = {};
+      methodBucket?.forEach((count, method) => {
+        paymentsByMethod[method] = count;
+        currentByMethod.set(method, (currentByMethod.get(method) ?? 0) + count);
+      });
+      daysList.push({ date: dateKey, newSubs, renewals, newSubsByRate, paymentsByMethod });
+      newSubsTotal += newSubs;
+      renewalsTotal += renewals;
+    }
+  }
+
+  const rateDemand: RateDemandStat[] = Array.from(
+    new Set([...currentByRate.keys(), ...prevByRate.keys()]),
+  )
+    .sort((a, b) => a - b)
+    .map((rateIndex) => ({
+      rateIndex,
+      current: currentByRate.get(rateIndex) ?? 0,
+      prev: prevByRate.get(rateIndex) ?? 0,
+    }))
+    .filter((r) => r.current > 0 || r.prev > 0);
+
+  const methodDemand: MethodDemandStat[] = Array.from(
+    new Set([...currentByMethod.keys(), ...prevByMethod.keys()]),
+  )
+    .map((method) => ({
+      method,
+      current: currentByMethod.get(method) ?? 0,
+      prev: prevByMethod.get(method) ?? 0,
+    }))
+    .filter((m) => m.current > 0 || m.prev > 0)
+    .sort((a, b) => b.current + b.prev - (a.current + a.prev));
+
+  return {
+    days: daysList,
+    newSubsTotal,
+    renewalsTotal,
+    prevNewSubsTotal,
+    prevRenewalsTotal,
+    rateDemand,
+    methodDemand,
+  };
 }
 
 /** Оплаченные платежи ЮKassa без записанного способа (для разового бэкфилла из админки). */

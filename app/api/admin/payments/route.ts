@@ -1,5 +1,5 @@
 import { getAdminEmail } from "@/lib/admin-auth";
-import { getPaymentMethodStats, listPaidYookassaWithoutMethod, listPayments, setPaymentMethod } from "@/lib/payments-store";
+import { getPaymentMethodStats, getSubscriptionStats, listPaidYookassaWithoutMethod, listPayments, setPaymentMethod } from "@/lib/payments-store";
 import { getYookassaPayment, paymentMethodLabel } from "@/lib/yookassa";
 import { recurrentActiveStats, listRecurrent, backfillRecurrentStreaks } from "@/lib/recurrent-store";
 import { getPaymentProvider, setPaymentProvider } from "@/lib/settings-store";
@@ -31,6 +31,11 @@ async function handleGet(request: Request) {
   if (searchParams.get("recurrent_all")) {
     return Response.json({ recurrent: await listRecurrent(1000) });
   }
+  // Переключение окна графиков подписок без перезагрузки остальных данных
+  const statsDays = Number(searchParams.get("stats_days")) || null;
+  if (statsDays) {
+    return Response.json({ subscriptionStats: await getSubscriptionStats(statsDays) });
+  }
 
   return Response.json({
     provider: await getPaymentProvider(),
@@ -38,6 +43,7 @@ async function handleGet(request: Request) {
     recurrent: await listRecurrent(10),
     recurrentActive: await recurrentActiveStats(),
     methodStats: await getPaymentMethodStats(),
+    subscriptionStats: await getSubscriptionStats(30),
   });
 }
 

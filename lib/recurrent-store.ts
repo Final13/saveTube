@@ -245,27 +245,49 @@ export async function backfillRecurrentStreaks(): Promise<number | null> {
   return updated;
 }
 
-/** Активные автопродления: всего + разбивка по длительности тарифа (заголовок админки). */
+/** Активные автопродления: всего + разбивка по длительности тарифа + сколько подписок
+ *  продлились ≥1/≥2/≥3 раз (по success_streak) + полное распределение по числу
+ *  продлений подряд (streak × тариф), включая 0 — таблица в админке. */
 export async function recurrentActiveStats(): Promise<{
   total: number;
   byDays: Record<number, number>;
+  renewed: { ge1: number; ge2: number; ge3: number };
+  streaks: Array<{ streak: number; byDays: Record<number, number>; total: number }>;
 }> {
   await ensureRecurrentSchema();
   const db = getMysqlClient();
-  if (!db) return { total: 0, byDays: {} };
+  if (!db) return { total: 0, byDays: {}, renewed: { ge1: 0, ge2: 0, ge3: 0 }, streaks: [] };
 
   const rows = (await db.query(
-    `SELECT rate_index, COUNT(*) AS cnt FROM ${recurrentTable()} WHERE active = 1 GROUP BY rate_index`,
-  )) as Array<{ rate_index: number; cnt: number }>;
+    `SELECT rate_index, success_streak, COUNT(*) AS cnt FROM ${recurrentTable()}
+     WHERE active = 1 GROUP BY rate_index, success_streak`,
+  )) as Array<{ rate_index: number; success_streak: number; cnt: number }>;
 
   const byDays: Record<number, number> = {};
+  const renewed = { ge1: 0, ge2: 0, ge3: 0 };
+  const streakMap = new Map<number, { byDays: Record<number, number>; total: number }>();
   let total = 0;
   for (const row of rows) {
     const cnt = Number(row.cnt);
-    byDays[getRate(Number(row.rate_index))?.days ?? Number(row.rate_index)] = cnt;
+    const days = getRate(Number(row.rate_index))?.days ?? Number(row.rate_index);
+    byDays[days] = (byDays[days] ?? 0) + cnt;
     total += cnt;
+    const streak = Number(row.success_streak);
+    if (streak >= 1) renewed.ge1 += cnt;
+    if (streak >= 2) renewed.ge2 += cnt;
+    if (streak >= 3) renewed.ge3 += cnt;
+    let bucket = streakMap.get(streak);
+    if (!bucket) {
+      bucket = { byDays: {}, total: 0 };
+      streakMap.set(streak, bucket);
+    }
+    bucket.byDays[days] = (bucket.byDays[days] ?? 0) + cnt;
+    bucket.total += cnt;
   }
-  return { total, byDays };
+  const streaks = Array.from(streakMap, ([streak, value]) => ({ streak, ...value })).sort(
+    (a, b) => a.streak - b.streak,
+  );
+  return { total, byDays, renewed, streaks };
 }
 
 /** Все рекуррентные подписки (для админки), новые первыми, страницами по курсору id. */

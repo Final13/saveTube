@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ChevronDown, ChevronUp, ChevronsUpDown } from "lucide-react";
 import { RATES } from "@/lib/rates";
+import type { SubscriptionStats } from "@/lib/payments-store";
 
 interface Page<T> {
   items: T[];
@@ -12,7 +13,13 @@ interface Page<T> {
 interface PaymentsData {
   provider: "tbank" | "yookassa";
   methodStats: Array<{ method: string; count: number }>;
-  recurrentActive: { total: number; byDays: Record<number, number> };
+  recurrentActive: {
+    total: number;
+    byDays: Record<number, number>;
+    renewed: { ge1: number; ge2: number; ge3: number };
+    streaks: Array<{ streak: number; byDays: Record<number, number>; total: number }>;
+  };
+  subscriptionStats: SubscriptionStats | null;
   payments: Page<{
     id: number;
     email: string;
@@ -102,6 +109,8 @@ export default function PaymentsPanel() {
     dir: "asc" | "desc";
   } | null>(null);
   const [loadingAllRecurrent, setLoadingAllRecurrent] = useState(false);
+  const [statsDays, setStatsDays] = useState(30);
+  const [statsLoading, setStatsLoading] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -187,6 +196,28 @@ export default function PaymentsPanel() {
       setError("Ошибка сети.");
     } finally {
       setLoadingMore(null);
+    }
+  }
+
+  // Переключение окна графиков подписок: догружает только статистику, не всю панель
+  async function loadStats(days: number) {
+    if (statsLoading || days === statsDays) return;
+    setStatsDays(days);
+    setStatsLoading(true);
+    try {
+      const response = await fetch(`/api/admin/payments?stats_days=${days}`, { cache: "no-store" });
+      if (!response.ok) {
+        setError("Не удалось загрузить статистику.");
+        return;
+      }
+      const body = (await response.json()) as { subscriptionStats?: SubscriptionStats | null };
+      setData((prev) =>
+        prev ? { ...prev, subscriptionStats: body.subscriptionStats ?? null } : prev,
+      );
+    } catch {
+      setError("Ошибка сети.");
+    } finally {
+      setStatsLoading(false);
     }
   }
 
@@ -350,11 +381,48 @@ export default function PaymentsPanel() {
       {data && (
         <>
           <div className="mt-4 rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-4 shadow-sm">
+            <div className="flex flex-wrap items-center gap-3">
+              <h3 className="text-sm font-semibold text-slate-700 dark:text-zinc-200">
+                Динамика подписок
+              </h3>
+              <div className="flex rounded-lg border border-slate-200 dark:border-zinc-700 p-0.5">
+                {STATS_WINDOWS.map((w) => (
+                  <button
+                    key={w.days}
+                    onClick={() => void loadStats(w.days)}
+                    disabled={statsLoading}
+                    className={`rounded-md px-2.5 py-1 text-xs transition ${
+                      statsDays === w.days
+                        ? "bg-sky-600 font-semibold text-white"
+                        : "text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-800"
+                    }`}
+                  >
+                    {w.label}
+                  </button>
+                ))}
+              </div>
+              {statsLoading && <span className="text-xs text-slate-400">Загрузка…</span>}
+            </div>
+            {!data.subscriptionStats ? (
+              <p className="mt-2 text-sm text-slate-400">Нет данных (MySQL недоступна).</p>
+            ) : (
+              <SubscriptionCharts stats={data.subscriptionStats} />
+            )}
+          </div>
+
+          <div className="mt-4 rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-4 shadow-sm">
             <h3 className="flex items-center gap-3 text-sm font-semibold text-slate-700 dark:text-zinc-200">
               Автопродления (активных: {data.recurrentActive.total}){" "}
               <span className="font-normal text-slate-500 dark:text-zinc-400">
                 — 365 дней: {data.recurrentActive.byDays[365] ?? 0}, 30 дней:{" "}
                 {data.recurrentActive.byDays[30] ?? 0}, 7 дней: {data.recurrentActive.byDays[7] ?? 0}
+              </span>
+              <span
+                className="font-normal text-slate-500 dark:text-zinc-400"
+                title="Сколько активных подписок успешно продлились: хотя бы раз / дважды / трижды и более (по колонке «Успешных подряд»)"
+              >
+                · продлились ≥1 раза: {data.recurrentActive.renewed.ge1}, ≥2:{" "}
+                {data.recurrentActive.renewed.ge2}, ≥3: {data.recurrentActive.renewed.ge3}
               </span>
               <button
                 onClick={() => void backfillStreaks()}
@@ -414,6 +482,54 @@ export default function PaymentsPanel() {
                 {loadingMore === "recurrent" ? "Загрузка…" : "Показать ещё 10"}
               </button>
             )}
+            {data.recurrentActive.streaks.length > 0 &&
+              (() => {
+                // Колонки тарифов — все встретившиеся длительности, по возрастанию
+                const dayCols = Array.from(
+                  new Set(
+                    data.recurrentActive.streaks.flatMap((r) => Object.keys(r.byDays).map(Number)),
+                  ),
+                ).sort((a, b) => a - b);
+                return (
+                  <div className="mt-4">
+                    <h4 className="text-xs font-semibold text-slate-600 dark:text-zinc-300">
+                      Распределение по продлениям — сколько активных подписок продлились ровно N раз
+                    </h4>
+                    <table className="mt-1.5 w-full text-sm">
+                      <thead>
+                        <tr className="text-left text-xs text-slate-400">
+                          <th className="py-1 pr-4 font-normal">Продлений</th>
+                          {dayCols.map((d) => (
+                            <th key={d} className="py-1 pr-4 font-normal">
+                              {d} дней
+                            </th>
+                          ))}
+                          <th className="py-1 font-normal">Всего</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {data.recurrentActive.streaks.map((row) => (
+                          <tr
+                            key={row.streak}
+                            className="border-t border-slate-100 dark:border-zinc-800"
+                          >
+                            <td className="py-1 pr-4">
+                              {row.streak}
+                              {row.streak === 0 ? " (новые)" : ""}
+                            </td>
+                            {dayCols.map((d) => (
+                              <td key={d} className="py-1 pr-4">
+                                {row.byDays[d] ?? 0}
+                              </td>
+                            ))}
+                            <td className="py-1 font-medium">{row.total}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              })()}
           </div>
 
           <div className="mt-4 rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-4 shadow-sm">
@@ -513,5 +629,192 @@ export default function PaymentsPanel() {
         </>
       )}
     </div>
+  );
+}
+
+const STATS_WINDOWS = [
+  { days: 7, label: "7 дней" },
+  { days: 30, label: "30 дней" },
+  { days: 90, label: "90 дней" },
+];
+
+// Палитра линий графиков (тарифы / способы оплаты)
+const CHART_COLORS = ["#0284c7", "#d97706", "#059669", "#7c3aed", "#dc2626", "#0891b2"];
+
+// Подпись роста: % к предыдущему такому же периоду
+function growthBadge(current: number, prev: number): { text: string; className: string } {
+  if (prev === 0) {
+    return current > 0
+      ? { text: `с 0 до ${current}`, className: "text-emerald-600 dark:text-emerald-400" }
+      : { text: "0", className: "text-slate-400" };
+  }
+  const pct = Math.round(((current - prev) / prev) * 100);
+  if (pct > 0) return { text: `+${pct}%`, className: "text-emerald-600 dark:text-emerald-400" };
+  if (pct < 0) return { text: `${pct}%`, className: "text-red-600 dark:text-red-400" };
+  return { text: "0%", className: "text-slate-400" };
+}
+
+// "YYYY-MM-DD" → "24.8" (строковая нарезка, без Date — чтобы не зависеть от TZ)
+function formatDay(iso: string): string {
+  return `${Number(iso.slice(8, 10))}.${Number(iso.slice(5, 7))}`;
+}
+
+const CHART_W = 380;
+const CHART_H = 160;
+const CHART_PAD = { top: 8, right: 8, bottom: 22, left: 32 };
+
+interface ChartSeries {
+  label: string;
+  color: string;
+  points: number[];
+  current: number;
+  prev: number;
+}
+
+// Простой SVG-лайнчарт без зависимостей (в стиле Chart из metrics-dashboard):
+// одна или несколько линий по дням + легенда с итогом и ростом к пред. периоду
+function LinesChart({
+  title,
+  dates,
+  series,
+}: {
+  title: string;
+  dates: string[];
+  series: ChartSeries[];
+}) {
+  const plotW = CHART_W - CHART_PAD.left - CHART_PAD.right;
+  const plotH = CHART_H - CHART_PAD.top - CHART_PAD.bottom;
+  const maxY = Math.max(1, ...series.flatMap((s) => s.points));
+  const count = Math.max(1, dates.length);
+  const x = (i: number) => CHART_PAD.left + (count > 1 ? (i / (count - 1)) * plotW : plotW / 2);
+  const y = (v: number) => CHART_PAD.top + plotH - (v / maxY) * plotH;
+
+  return (
+    <div>
+      <p className="text-xs font-semibold text-slate-700 dark:text-zinc-200">{title}</p>
+      <svg viewBox={`0 0 ${CHART_W} ${CHART_H}`} className="mt-1 w-full">
+        {[0.5, 1].map((f) => {
+          const v = Math.round(maxY * f);
+          return (
+            <g key={f}>
+              <line
+                x1={CHART_PAD.left}
+                x2={CHART_W - CHART_PAD.right}
+                y1={y(v)}
+                y2={y(v)}
+                stroke="#e2e8f0"
+                className="dark:stroke-zinc-700"
+                strokeWidth="1"
+              />
+              <text x={CHART_PAD.left - 5} y={y(v) + 3} textAnchor="end" fontSize="9" fill="#94a3b8">
+                {v}
+              </text>
+            </g>
+          );
+        })}
+        {dates.length > 0 && (
+          <>
+            <text x={CHART_PAD.left} y={CHART_H - 6} fontSize="9" fill="#94a3b8">
+              {formatDay(dates[0] ?? "")}
+            </text>
+            <text x={CHART_W - CHART_PAD.right} y={CHART_H - 6} textAnchor="end" fontSize="9" fill="#94a3b8">
+              {formatDay(dates[dates.length - 1] ?? "")}
+            </text>
+          </>
+        )}
+        {series.map((s) => (
+          <polyline
+            key={s.label}
+            points={s.points.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ")}
+            fill="none"
+            stroke={s.color}
+            strokeWidth="2"
+          />
+        ))}
+      </svg>
+      <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1">
+        {series.map((s) => {
+          const badge = growthBadge(s.current, s.prev);
+          return (
+            <span
+              key={s.label}
+              className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-zinc-300"
+            >
+              <span className="inline-block size-2 rounded-full" style={{ backgroundColor: s.color }} />
+              {s.label}: <b>{s.current}</b> <span className={badge.className}>({badge.text})</span>
+            </span>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// Четыре графика динамики: новые подписки, продления, спрос по тарифам, способы оплаты
+function SubscriptionCharts({ stats }: { stats: SubscriptionStats }) {
+  const dates = stats.days.map((d) => d.date);
+  return (
+    <>
+      <div className="mt-3 grid gap-4 lg:grid-cols-2">
+        <LinesChart
+          title="Новые подписки"
+          dates={dates}
+          series={[
+            {
+              label: "Подписки",
+              color: "#0284c7",
+              points: stats.days.map((d) => d.newSubs),
+              current: stats.newSubsTotal,
+              prev: stats.prevNewSubsTotal,
+            },
+          ]}
+        />
+        <LinesChart
+          title="Продления"
+          dates={dates}
+          series={[
+            {
+              label: "Продления",
+              color: "#059669",
+              points: stats.days.map((d) => d.renewals),
+              current: stats.renewalsTotal,
+              prev: stats.prevRenewalsTotal,
+            },
+          ]}
+        />
+      </div>
+      <div className="mt-4 grid gap-4 lg:grid-cols-2">
+        {stats.rateDemand.length > 0 ? (
+          <LinesChart
+            title="Спрос по тарифам (новые подписки)"
+            dates={dates}
+            series={stats.rateDemand.map((r, i) => ({
+              label: rateTitle(r.rateIndex),
+              color: CHART_COLORS[i % CHART_COLORS.length] ?? "#0284c7",
+              points: stats.days.map((d) => d.newSubsByRate[r.rateIndex] ?? 0),
+              current: r.current,
+              prev: r.prev,
+            }))}
+          />
+        ) : (
+          <p className="text-sm text-slate-400">Продаж за период не было.</p>
+        )}
+        {stats.methodDemand.length > 0 ? (
+          <LinesChart
+            title="Способы оплаты (все оплаченные)"
+            dates={dates}
+            series={stats.methodDemand.map((m, i) => ({
+              label: m.method,
+              color: CHART_COLORS[i % CHART_COLORS.length] ?? "#0284c7",
+              points: stats.days.map((d) => d.paymentsByMethod[m.method] ?? 0),
+              current: m.current,
+              prev: m.prev,
+            }))}
+          />
+        ) : (
+          <p className="text-sm text-slate-400">Платежей за период не было.</p>
+        )}
+      </div>
+    </>
   );
 }
