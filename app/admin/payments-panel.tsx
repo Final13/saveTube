@@ -815,6 +815,29 @@ function SubscriptionCharts({ stats }: { stats: SubscriptionStats }) {
           <p className="text-sm text-slate-400">Платежей за период не было.</p>
         )}
       </div>
+      {/* Провайдеры: T-Bank отдельно против всех способов ЮKassa одной линией */}
+      <div className="mt-4">
+        <LinesChart
+          title="Провайдеры: T-Bank vs ЮKassa (все её способы)"
+          dates={dates}
+          series={[
+            {
+              label: "T-Bank",
+              color: "#d97706",
+              points: stats.days.map((d) => d.paymentsByProvider.tbank),
+              current: stats.providerDemand[0]?.current ?? 0,
+              prev: stats.providerDemand[0]?.prev ?? 0,
+            },
+            {
+              label: "ЮKassa (все способы)",
+              color: "#7c3aed",
+              points: stats.days.map((d) => d.paymentsByProvider.yookassa),
+              current: stats.providerDemand[1]?.current ?? 0,
+              prev: stats.providerDemand[1]?.prev ?? 0,
+            },
+          ]}
+        />
+      </div>
     </>
   );
 }

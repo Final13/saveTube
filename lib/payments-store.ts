@@ -316,6 +316,8 @@ export interface SubscriptionDayStat {
   newSubsByRate: Record<number, number>;
   /** Все оплаченные платежи дня по способам оплаты (метка корзины → шт) */
   paymentsByMethod: Record<string, number>;
+  /** Все оплаченные платежи дня по провайдеру (T-Bank vs ЮKassa со всеми способами) */
+  paymentsByProvider: { tbank: number; yookassa: number };
 }
 
 export interface RateDemandStat {
@@ -342,6 +344,8 @@ export interface SubscriptionStats {
   rateDemand: RateDemandStat[];
   /** Спрос на способы оплаты: итоги текущего и предыдущего периода, по убыванию */
   methodDemand: MethodDemandStat[];
+  /** Провайдеры: T-Bank vs ЮKassa (все её способы одной строкой), всегда обе записи */
+  providerDemand: MethodDemandStat[];
 }
 
 /** Динамика подписок по дням для админки: новые vs автопродления, разбивка новых
@@ -399,6 +403,7 @@ export async function getSubscriptionStats(days = 30): Promise<SubscriptionStats
   }
 
   const methodsByDate = new Map<string, Map<string, number>>();
+  const providersByDate = new Map<string, { tbank: number; yookassa: number }>();
   for (const row of methodRows) {
     const dateKey = String(row.d);
     let bucket = methodsByDate.get(dateKey);
@@ -408,6 +413,13 @@ export async function getSubscriptionStats(days = 30): Promise<SubscriptionStats
     }
     const label = methodBasketLabel(row.method_full, row.provider);
     bucket.set(label, (bucket.get(label) ?? 0) + Number(row.cnt));
+    let providerBucket = providersByDate.get(dateKey);
+    if (!providerBucket) {
+      providerBucket = { tbank: 0, yookassa: 0 };
+      providersByDate.set(dateKey, providerBucket);
+    }
+    if (row.provider === "yookassa") providerBucket.yookassa += Number(row.cnt);
+    else providerBucket.tbank += Number(row.cnt);
   }
 
   const keyOf = (d: Date) =>
@@ -422,6 +434,8 @@ export async function getSubscriptionStats(days = 30): Promise<SubscriptionStats
   const prevByRate = new Map<number, number>();
   const currentByMethod = new Map<string, number>();
   const prevByMethod = new Map<string, number>();
+  let curProvider = { tbank: 0, yookassa: 0 };
+  let prevProvider = { tbank: 0, yookassa: 0 };
   let newSubsTotal = 0;
   let renewalsTotal = 0;
   let prevNewSubsTotal = 0;
@@ -431,11 +445,16 @@ export async function getSubscriptionStats(days = 30): Promise<SubscriptionStats
     const dateKey = keyOf(date);
     const bucket = byDate.get(dateKey);
     const methodBucket = methodsByDate.get(dateKey);
+    const providerBucket = providersByDate.get(dateKey) ?? { tbank: 0, yookassa: 0 };
     const newSubs = bucket?.newSubs ?? 0;
     const renewals = bucket?.renewals ?? 0;
     if (i > windowDays) {
       prevNewSubsTotal += newSubs;
       prevRenewalsTotal += renewals;
+      prevProvider = {
+        tbank: prevProvider.tbank + providerBucket.tbank,
+        yookassa: prevProvider.yookassa + providerBucket.yookassa,
+      };
       bucket?.byRate.forEach((count, rate) => {
         prevByRate.set(rate, (prevByRate.get(rate) ?? 0) + count);
       });
@@ -453,7 +472,18 @@ export async function getSubscriptionStats(days = 30): Promise<SubscriptionStats
         paymentsByMethod[method] = count;
         currentByMethod.set(method, (currentByMethod.get(method) ?? 0) + count);
       });
-      daysList.push({ date: dateKey, newSubs, renewals, newSubsByRate, paymentsByMethod });
+      curProvider = {
+        tbank: curProvider.tbank + providerBucket.tbank,
+        yookassa: curProvider.yookassa + providerBucket.yookassa,
+      };
+      daysList.push({
+        date: dateKey,
+        newSubs,
+        renewals,
+        newSubsByRate,
+        paymentsByMethod,
+        paymentsByProvider: providerBucket,
+      });
       newSubsTotal += newSubs;
       renewalsTotal += renewals;
     }
@@ -481,6 +511,12 @@ export async function getSubscriptionStats(days = 30): Promise<SubscriptionStats
     .filter((m) => m.current > 0 || m.prev > 0)
     .sort((a, b) => b.current + b.prev - (a.current + a.prev));
 
+  // Провайдеры — всегда обе линии, даже нулевые (нулевой период тоже информация)
+  const providerDemand: MethodDemandStat[] = [
+    { method: "T-Bank", current: curProvider.tbank, prev: prevProvider.tbank },
+    { method: "ЮKassa", current: curProvider.yookassa, prev: prevProvider.yookassa },
+  ];
+
   return {
     days: daysList,
     newSubsTotal,
@@ -489,6 +525,7 @@ export async function getSubscriptionStats(days = 30): Promise<SubscriptionStats
     prevRenewalsTotal,
     rateDemand,
     methodDemand,
+    providerDemand,
   };
 }
 
