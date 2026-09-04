@@ -364,6 +364,7 @@ export async function getSubscriptionStats(days = 30): Promise<SubscriptionStats
      FROM ${paymentsTable()}
      WHERE payment_status = 1
        AND payment_created_at >= CURDATE() - INTERVAL ${windowDays * 2} DAY
+       AND payment_created_at < CURDATE()
      GROUP BY d, payment_rate_index`,
   )) as Array<{ d: string; rate: number; renewals: number; new_subs: number }>;
 
@@ -374,6 +375,7 @@ export async function getSubscriptionStats(days = 30): Promise<SubscriptionStats
      FROM ${paymentsTable()}
      WHERE payment_status = 1
        AND payment_created_at >= CURDATE() - INTERVAL ${windowDays * 2} DAY
+       AND payment_created_at < CURDATE()
      GROUP BY d, method_full, provider`,
   )) as Array<{ d: string; method_full: string | null; provider: string | null; cnt: number }>;
 
@@ -412,6 +414,9 @@ export async function getSubscriptionStats(days = 30): Promise<SubscriptionStats
     `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   const today = new Date();
 
+  // Окно — только полностью завершённые дни: текущий период = [вчера - windowDays + 1 … вчера],
+  // предыдущий — такой же перед ним. Сегодня (неполный день) не участвует ни в графиках,
+  // ни в сравнении — иначе хвост линии и бейджи роста всегда проседают.
   const daysList: SubscriptionDayStat[] = [];
   const currentByRate = new Map<number, number>();
   const prevByRate = new Map<number, number>();
@@ -421,14 +426,14 @@ export async function getSubscriptionStats(days = 30): Promise<SubscriptionStats
   let renewalsTotal = 0;
   let prevNewSubsTotal = 0;
   let prevRenewalsTotal = 0;
-  for (let i = windowDays * 2 - 1; i >= 0; i--) {
+  for (let i = windowDays * 2; i >= 1; i--) {
     const date = new Date(today.getFullYear(), today.getMonth(), today.getDate() - i);
     const dateKey = keyOf(date);
     const bucket = byDate.get(dateKey);
     const methodBucket = methodsByDate.get(dateKey);
     const newSubs = bucket?.newSubs ?? 0;
     const renewals = bucket?.renewals ?? 0;
-    if (i >= windowDays) {
+    if (i > windowDays) {
       prevNewSubsTotal += newSubs;
       prevRenewalsTotal += renewals;
       bucket?.byRate.forEach((count, rate) => {
