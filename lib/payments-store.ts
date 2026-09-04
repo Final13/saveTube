@@ -364,7 +364,7 @@ export async function getSubscriptionStats(days = 30): Promise<SubscriptionStats
      FROM ${paymentsTable()}
      WHERE payment_status = 1
        AND payment_created_at >= CURDATE() - INTERVAL ${windowDays * 2} DAY
-     GROUP BY DATE(payment_created_at), payment_rate_index`,
+     GROUP BY d, payment_rate_index`,
   )) as Array<{ d: string; rate: number; renewals: number; new_subs: number }>;
 
   // Способы оплаты по дням — все оплаченные платежи (и новые, и продления)
@@ -374,7 +374,7 @@ export async function getSubscriptionStats(days = 30): Promise<SubscriptionStats
      FROM ${paymentsTable()}
      WHERE payment_status = 1
        AND payment_created_at >= CURDATE() - INTERVAL ${windowDays * 2} DAY
-     GROUP BY DATE(payment_created_at), method_full, provider`,
+     GROUP BY d, method_full, provider`,
   )) as Array<{ d: string; method_full: string | null; provider: string | null; cnt: number }>;
 
   interface DayBucket {

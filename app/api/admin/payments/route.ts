@@ -18,6 +18,18 @@ async function handleGet(request: Request) {
   }
 
   const { searchParams } = new URL(request.url);
+
+  // Статистика подписок — некритичный блок: при сбое возвращаем null
+  // (панель покажет «Нет данных»), а не роняем весь запрос
+  const statsSafe = async (days: number) => {
+    try {
+      return await getSubscriptionStats(days);
+    } catch (error) {
+      console.error("Subscription stats failed:", error);
+      return null;
+    }
+  };
+
   const paymentsBefore = Number(searchParams.get("payments_before")) || null;
   const recurrentBefore = Number(searchParams.get("recurrent_before")) || null;
   // Догрузка одной таблицы по курсору
@@ -34,7 +46,7 @@ async function handleGet(request: Request) {
   // Переключение окна графиков подписок без перезагрузки остальных данных
   const statsDays = Number(searchParams.get("stats_days")) || null;
   if (statsDays) {
-    return Response.json({ subscriptionStats: await getSubscriptionStats(statsDays) });
+    return Response.json({ subscriptionStats: await statsSafe(statsDays) });
   }
 
   return Response.json({
@@ -43,7 +55,7 @@ async function handleGet(request: Request) {
     recurrent: await listRecurrent(10),
     recurrentActive: await recurrentActiveStats(),
     methodStats: await getPaymentMethodStats(),
-    subscriptionStats: await getSubscriptionStats(30),
+    subscriptionStats: await statsSafe(30),
   });
 }
 
