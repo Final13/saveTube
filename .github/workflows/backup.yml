@@ -1,12 +1,13 @@
 # Ежедневная отправка дампа БД в Telegram-группу.
 # Дамп делает сервер (крон save-tube 23:59 MSK, /var/www/save-tube/data/backup_savetube.sh);
 # с VPS api.telegram.org заблокирован хостером, поэтому отправка отсюда.
+# Запуск — workflow_dispatch из серверного крона 00:04 MSK
+# (/var/www/save-tube/data/gh_dispatch_backup.sh, токен в data/.gh_dispatch_token):
+# schedule у GitHub best-effort — первый же плановый ран был пропущен (10.09), не полагаемся.
 # Секреты: SSH_PRIVATE_KEY (уже есть), TG_TOKEN, TG_CHAT_ID (группа SaveTube dumps).
 name: DB backup to Telegram
 
 on:
-  schedule:
-    - cron: "4 21 * * *" # 00:04 MSK, после серверного дампа в 23:59 MSK
   workflow_dispatch:
 
 jobs:
