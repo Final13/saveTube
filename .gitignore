@@ -22,6 +22,7 @@
 
 # local data
 /data
+*.sql
 
 # misc
 .DS_Store

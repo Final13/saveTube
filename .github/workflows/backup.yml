@@ -1,0 +1,41 @@
+# Ежедневная отправка дампа БД в Telegram-группу.
+# Дамп делает сервер (крон save-tube 04:17 MSK, /var/www/save-tube/data/backup_savetube.sh);
+# с VPS api.telegram.org заблокирован хостером, поэтому отправка отсюда.
+# Секреты: SSH_PRIVATE_KEY (уже есть), TG_TOKEN, TG_CHAT_ID (группа SaveTube dumps).
+name: DB backup to Telegram
+
+on:
+  schedule:
+    - cron: "4 21 * * *" # 00:04 MSK, после серверного дампа в 23:59 MSK
+  workflow_dispatch:
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch latest dump from VPS
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H 157.22.192.87 >> ~/.ssh/known_hosts
+          LATEST=$(ssh -i ~/.ssh/id_ed25519 save-tube@157.22.192.87 'ls -1t /var/www/save-tube/data/backups/savetube_db_*.sql.gz | head -1')
+          echo "latest: $LATEST"
+          scp -i ~/.ssh/id_ed25519 "save-tube@157.22.192.87:$LATEST" ./dump.sql.gz
+          ls -la dump.sql.gz
+
+      - name: Send to Telegram
+        env:
+          TG_TOKEN: ${{ secrets.TG_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+        run: |
+          SIZE=$(du -h dump.sql.gz | cut -f1)
+          DATE=$(basename dump.sql.gz | sed 's/.*savetube_db_//;s/\.sql\.gz//')
+          RESP=$(curl -s "https://api.telegram.org/bot$TG_TOKEN/sendDocument" \
+            -F "chat_id=$TG_CHAT_ID" \
+            -F "document=@dump.sql.gz" \
+            -F "caption=✅ save-tube дамп $DATE ($SIZE)")
+          echo "$RESP" | head -c 300
+          echo "$RESP" | grep -q '"ok":true' || exit 1
