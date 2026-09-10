@@ -381,36 +381,6 @@ export default function PaymentsPanel() {
       {data && (
         <>
           <div className="mt-4 rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-4 shadow-sm">
-            <div className="flex flex-wrap items-center gap-3">
-              <h3 className="text-sm font-semibold text-slate-700 dark:text-zinc-200">
-                Динамика подписок
-              </h3>
-              <div className="flex rounded-lg border border-slate-200 dark:border-zinc-700 p-0.5">
-                {STATS_WINDOWS.map((w) => (
-                  <button
-                    key={w.days}
-                    onClick={() => void loadStats(w.days)}
-                    disabled={statsLoading}
-                    className={`rounded-md px-2.5 py-1 text-xs transition ${
-                      statsDays === w.days
-                        ? "bg-sky-600 font-semibold text-white"
-                        : "text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-800"
-                    }`}
-                  >
-                    {w.label}
-                  </button>
-                ))}
-              </div>
-              {statsLoading && <span className="text-xs text-slate-400">Загрузка…</span>}
-            </div>
-            {!data.subscriptionStats ? (
-              <p className="mt-2 text-sm text-slate-400">Нет данных (MySQL недоступна).</p>
-            ) : (
-              <SubscriptionCharts stats={data.subscriptionStats} />
-            )}
-          </div>
-
-          <div className="mt-4 rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-4 shadow-sm">
             <h3 className="flex items-center gap-3 text-sm font-semibold text-slate-700 dark:text-zinc-200">
               Автопродления (активных: {data.recurrentActive.total}){" "}
               <span className="font-normal text-slate-500 dark:text-zinc-400">
@@ -624,6 +594,36 @@ export default function PaymentsPanel() {
               >
                 {loadingMore === "payments" ? "Загрузка…" : "Показать ещё 10"}
               </button>
+            )}
+          </div>
+
+          <div className="mt-4 rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-4 shadow-sm">
+            <div className="flex flex-wrap items-center gap-3">
+              <h3 className="text-sm font-semibold text-slate-700 dark:text-zinc-200">
+                Динамика подписок
+              </h3>
+              <div className="flex rounded-lg border border-slate-200 dark:border-zinc-700 p-0.5">
+                {STATS_WINDOWS.map((w) => (
+                  <button
+                    key={w.days}
+                    onClick={() => void loadStats(w.days)}
+                    disabled={statsLoading}
+                    className={`rounded-md px-2.5 py-1 text-xs transition ${
+                      statsDays === w.days
+                        ? "bg-sky-600 font-semibold text-white"
+                        : "text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-800"
+                    }`}
+                  >
+                    {w.label}
+                  </button>
+                ))}
+              </div>
+              {statsLoading && <span className="text-xs text-slate-400">Загрузка…</span>}
+            </div>
+            {!data.subscriptionStats ? (
+              <p className="mt-2 text-sm text-slate-400">Нет данных (MySQL недоступна).</p>
+            ) : (
+              <SubscriptionCharts stats={data.subscriptionStats} />
             )}
           </div>
         </>
