@@ -36,9 +36,17 @@ jobs:
         run: |
           SIZE=$(du -h "$FILE" | cut -f1)
           DATE=$(echo "$FILE" | sed 's/savetube_db_//;s/\.sql\.gz//')
-          RESP=$(curl -s "https://api.telegram.org/bot$TG_TOKEN/sendDocument" \
-            -F "chat_id=$TG_CHAT_ID" \
-            -F "document=@$FILE" \
-            -F "caption=✅ save-tube дамп $DATE ($SIZE)")
+          send() {
+            curl -s "https://api.telegram.org/bot$TG_TOKEN/sendDocument" \
+              -F "chat_id=$1" \
+              -F "document=@$FILE" \
+              -F "caption=✅ save-tube дамп $DATE ($SIZE)"
+          }
+          RESP=$(send "$TG_CHAT_ID")
+          # Группа могла мигрировать в супергруппу — chat_id меняется, новый приходит в ответе
+          if ! echo "$RESP" | grep -q '"ok":true'; then
+            NEW_ID=$(echo "$RESP" | sed -n 's/.*"migrate_to_chat_id":\(-[0-9]*\).*/\1/p')
+            [ -n "$NEW_ID" ] && echo "группа мигрировала, новый chat_id: $NEW_ID" && RESP=$(send "$NEW_ID")
+          fi
           echo "$RESP" | head -c 300
           echo "$RESP" | grep -q '"ok":true' || exit 1

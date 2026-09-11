@@ -99,7 +99,7 @@ Next.js 16 + React 19, App Router, Tailwind v4, lucide-react, алиас `@/`. �
 ## Бэкапы БД (после инцидента 2026-09-10)
 
 - Дамп на сервере: крон юзера save-tube `59 23 * * *` (дамп на конец дня) → `/var/www/save-tube/data/backup_savetube.sh` (mysqldump из кредов .env, без `wp_request_metrics`) → gzip в `/var/www/save-tube/data/backups/`, ротация 7 шт, лог `backup.log`.
-- **С VPS api.telegram.org заблокирован хостером** (IPv4/IPv6 молчат, google доступен) — отправку в ТГ делает `.github/workflows/backup.yml` (cron 00:04 MSK + workflow_dispatch): scp свежего дампа ключом `SSH_PRIVATE_KEY` → sendDocument. Секреты `TG_TOKEN` (бот @saveTubeDumpBot) и `TG_CHAT_ID` (группа SaveTube dumps) — в настройках репо.
+- **С VPS api.telegram.org заблокирован хостером** (IPv4/IPv6 молчат, google и api.github.com доступны) — отправку в ТГ делает `.github/workflows/backup.yml` (только `workflow_dispatch`; **schedule убран — GH-шедулер best-effort, молча пропустил первый же ран 10.09**): scp свежего дампа ключом `SSH_PRIVATE_KEY` → sendDocument с датой в подписи. Триггер — серверный крон `4 0 * * *` → `/var/www/save-tube/data/gh_dispatch_backup.sh` (POST dispatches, лог в `backup.log`); токен — fine-grained PAT (Actions RW, только этот репо) в `/var/www/save-tube/data/.gh_dispatch_token` (0600, вне `.env`, деплой не трогает). Секреты `TG_TOKEN` (бот @saveTubeDumpBot) и `TG_CHAT_ID` (группа SaveTube dumps) — в настройках репо.
 - Binlog (`log_bin=ON`, 7 дней) не трогать — второй эшелон (point-in-time).
 
 ## Отложено
