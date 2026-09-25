@@ -46,3 +46,6 @@ yarn-error.log*
 next-env.d.ts
 
 /.playwright-mcp/
+
+# scratch dirs (могут содержать креды — не коммитить)
+.tmp-*/

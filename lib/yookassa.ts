@@ -224,19 +224,23 @@ export async function activateYookassaPayment(yk: YookassaPayment): Promise<numb
         console.error("Failed to send payment success email:", error);
       }
     });
-  }
 
-  if (yk.payment_method?.saved && yk.payment_method.id) {
-    await upsertRecurrent({
-      email: payment.email,
-      rateIndex: payment.rate_index,
-      paymentMethodId: yk.payment_method.id,
-      // Для карт — тип карты ("Mir", "Visa"), для прочих методов (SberPay, ЮMoney,
-      // СБП...) — код метода из payment_method.type; в ЛК мапится в читаемый вид.
-      cardType: yk.payment_method.card?.card_type ?? yk.payment_method.type ?? null,
-      cardLast4: yk.payment_method.card?.last4 ?? null,
-      nextBillingAt: until,
-    });
+    // Метод для автопродления сохраняем ТОЛЬКО при первичной активации платежа.
+    // Вне этого guard'а повторный вебхук по давно обработанному платежу (ЮKassa
+    // переотправляет их неделями) пересоздавал рекуррент после отвязки карты в ЛК,
+    // а крон списывал снова — инцидент 25.09.2026 (3 списания после 3 отвязок).
+    if (yk.payment_method?.saved && yk.payment_method.id) {
+      await upsertRecurrent({
+        email: payment.email,
+        rateIndex: payment.rate_index,
+        paymentMethodId: yk.payment_method.id,
+        // Для карт — тип карты ("Mir", "Visa"), для прочих методов (SberPay, ЮMoney,
+        // СБП...) — код метода из payment_method.type; в ЛК мапится в читаемый вид.
+        cardType: yk.payment_method.card?.card_type ?? yk.payment_method.type ?? null,
+        cardLast4: yk.payment_method.card?.last4 ?? null,
+        nextBillingAt: until,
+      });
+    }
   }
 
   // Серия успешных автосписаний: +1 только при реальной активации продления
