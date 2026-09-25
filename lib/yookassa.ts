@@ -1,7 +1,7 @@
 import { after } from "next/server";
 import { getRate } from "@/lib/rates";
 import { getPayment, markPaid } from "@/lib/payments-store";
-import { bumpRecurrentStreak, upsertRecurrent } from "@/lib/recurrent-store";
+import { bumpRecurrentStreak, isRecurrentUnlinked, upsertRecurrent } from "@/lib/recurrent-store";
 import { sendPaymentSuccessEmail } from "@/lib/email";
 import { isAdminEmail } from "@/lib/admin-auth";
 import { SITE_URL } from "@/lib/site";
@@ -229,7 +229,12 @@ export async function activateYookassaPayment(yk: YookassaPayment): Promise<numb
     // Вне этого guard'а повторный вебхук по давно обработанному платежу (ЮKassa
     // переотправляет их неделями) пересоздавал рекуррент после отвязки карты в ЛК,
     // а крон списывал снова — инцидент 25.09.2026 (3 списания после 3 отвязок).
-    if (yk.payment_method?.saved && yk.payment_method.id) {
+    // Отвязка абсолютна: продление, инициированное кроном ДО отвязки (платёж уже
+    // летел), активирует оплаченные дни, но автосписания не возобновляет — иначе
+    // «отвязал карту» не отменяло бы подписку (инцидент 25.09.2026).
+    const skipForUnlink =
+      yk.metadata?.renewal === "true" && (await isRecurrentUnlinked(payment.email));
+    if (!skipForUnlink && yk.payment_method?.saved && yk.payment_method.id) {
       await upsertRecurrent({
         email: payment.email,
         rateIndex: payment.rate_index,

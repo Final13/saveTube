@@ -17,6 +17,8 @@ export interface RecurrentSubscription {
   success_streak: number;
   next_billing_at: number; // unix ms
   created_at: number | null; // unix ms
+  /** Метка отвязки (tombstone): пока задана и запись неактивна — автосписания запрещены */
+  unlinkedAt: number | null; // unix ms
 }
 
 function recurrentTable(): string {
@@ -65,6 +67,9 @@ function ensureRecurrentSchema(): Promise<void> {
           `ALTER TABLE ${recurrentTable()} ADD COLUMN success_streak INT NOT NULL DEFAULT 0`,
         );
       }
+      if (!existing.has("unlinked_at")) {
+        await db.query(`ALTER TABLE ${recurrentTable()} ADD COLUMN unlinked_at DATETIME NULL`);
+      }
     })();
     schemaPromise.catch(() => {
       schemaPromise = null;
@@ -84,6 +89,7 @@ interface RecurrentRow {
   success_streak: number;
   next_billing_ms: number;
   created_ms: number | null;
+  unlinked_ms: number | null;
 }
 
 function parseRow(row: RecurrentRow): RecurrentSubscription {
@@ -98,14 +104,17 @@ function parseRow(row: RecurrentRow): RecurrentSubscription {
     success_streak: Number(row.success_streak),
     next_billing_at: Number(row.next_billing_ms),
     created_at: row.created_ms ? Number(row.created_ms) : null,
+    unlinkedAt: row.unlinked_ms ? Number(row.unlinked_ms) : null,
   };
 }
 
 const SELECT_FIELDS = `id, email, rate_index, yookassa_payment_method_id, card_type, card_last4, active, success_streak,
   UNIX_TIMESTAMP(next_billing_at) * 1000 AS next_billing_ms,
-  UNIX_TIMESTAMP(created_at) * 1000 AS created_ms`;
+  UNIX_TIMESTAMP(created_at) * 1000 AS created_ms,
+  UNIX_TIMESTAMP(unlinked_at) * 1000 AS unlinked_ms`;
 
-/** Сохранить/обновить рекуррент после успешной оплаты (одна активная запись на email). */
+/** Сохранить/обновить рекуррент после успешной оплаты (одна активная запись на email).
+ *  Реактивация очищает метку отвязки: новая явная оплата — новое согласие на автопродление. */
 export async function upsertRecurrent(input: {
   email: string;
   rateIndex: number;
@@ -128,6 +137,7 @@ export async function upsertRecurrent(input: {
        card_type = VALUES(card_type),
        card_last4 = VALUES(card_last4),
        active = 1,
+       unlinked_at = NULL,
        next_billing_at = VALUES(next_billing_at)`,
     [
       input.email,
@@ -140,25 +150,46 @@ export async function upsertRecurrent(input: {
   );
 }
 
-/** Рекуррент по email (для ЛК). */
+/** Рекуррент по email (для ЛК) — только активный; погашенные отвязкой не отдаём. */
 export async function getRecurrentByEmail(email: string): Promise<RecurrentSubscription | null> {
   await ensureRecurrentSchema();
   const db = getMysqlClient();
   if (!db) return null;
 
-  const rows = (await db.query(`SELECT ${SELECT_FIELDS} FROM ${recurrentTable()} WHERE email = ? LIMIT 1`, [
-    email,
-  ])) as RecurrentRow[];
+  const rows = (await db.query(
+    `SELECT ${SELECT_FIELDS} FROM ${recurrentTable()} WHERE email = ? AND active = 1 LIMIT 1`,
+    [email],
+  )) as RecurrentRow[];
   if (!Array.isArray(rows) || rows.length === 0) return null;
   return parseRow(rows[0]);
 }
 
-/** Удалить рекуррент (отвязка карты — автопродление прекращается). */
+/** Отвязана ли карта: запись погашена (active=0) и стоит метка unlinked_at.
+ *  Продление, инициированное до отвязки, при активации НЕ возобновляет автосписания. */
+export async function isRecurrentUnlinked(email: string): Promise<boolean> {
+  await ensureRecurrentSchema();
+  const db = getMysqlClient();
+  if (!db) return false;
+
+  const rows = (await db.query(
+    `SELECT 1 FROM ${recurrentTable()} WHERE email = ? AND active = 0 AND unlinked_at IS NOT NULL LIMIT 1`,
+    [email],
+  )) as unknown[];
+  return rows.length > 0;
+}
+
+/** Отвязка карты — АБСОЛЮТНА: строка не удаляется, а гасится (tombstone) с меткой unlinked_at.
+ *  Пока метка стоит и запись неактивна, автосписания возобновляются только новой явной
+ *  оплатой; сами списания идут только по активным записям (getDueRecurrent).
+ *  DELETE способа в ЮKassa при этом — best-effort (у магазина часто 405, игнорируем). */
 export async function deleteRecurrent(email: string): Promise<void> {
   await ensureRecurrentSchema();
   const db = getMysqlClient();
   if (!db) return;
-  await db.query(`DELETE FROM ${recurrentTable()} WHERE email = ?`, [email]);
+  await db.query(
+    `UPDATE ${recurrentTable()} SET active = 0, unlinked_at = COALESCE(unlinked_at, NOW()) WHERE email = ?`,
+    [email],
+  );
 }
 
 /** Подписки, которым пора списывать (active и next_billing_at <= сейчас). */

@@ -9,5 +9,5 @@
 - Redis — `lib/redis.ts` (ioredis, globalThis-синглтон, lazy), `REDIS_URL` (локально docker `savetube-redis`).
 - Сессия — iron-session (`lib/auth/session.ts`), cookie `savetube_session` на 1 год, секрет `SESSION_SECRET`. Юзеры — `{prefix}app_users` (НЕ `users`, база WP-совместимая): id UUID, email UNIQUE lower-case.
 - ЛК `/account` только по сессии: нет → OTP-форма; есть → подписка, автопродление, «Отвязать карту», история, «Выйти». `/api/account*` без сессии — 401. Cookie `user_email` — для download-form, НЕ путать с сессией.
-- Отвязка карты: `deleteRecurrent` всегда, DELETE в ЮKassa — best-effort (405 игнорируем). Подписка действует до оплаченной даты.
+- Отвязка карты: `deleteRecurrent` всегда (tombstone `active=0` + `unlinked_at` — отвязка абсолютна: автосписания возобновляет только новая явная оплата), DELETE в ЮKassa — best-effort (405 игнорируем). Подписка действует до оплаченной даты.
 - Письма (`lib/email.ts`, nodemailer): welcome, OTP (5 мин), payment-success — только при реальной активации `markPaid` (дублей нет), через `after()`, ошибки глушим. На dev TLS-проверка SMTP отключена. Поддержка — `s@save-tube.ru` (`SUPPORT_EMAIL` в `lib/site.ts`).
