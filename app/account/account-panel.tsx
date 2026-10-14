@@ -122,6 +122,20 @@ export default function AccountPanel() {
   }
 
   if (authed === null) {
+    // Запрос упал (сеть/5xx): иначе спиннер крутился бы бесконечно без объяснения
+    if (error && !loading) {
+      return (
+        <div className="mt-4 space-y-3">
+          <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+          <button
+            onClick={() => void load()}
+            className="rounded-lg border border-zinc-300 dark:border-zinc-700 px-3 py-2 text-sm font-medium text-zinc-600 dark:text-zinc-400 transition hover:bg-zinc-100 dark:hover:bg-zinc-800"
+          >
+            Повторить
+          </button>
+        </div>
+      );
+    }
     return (
       <div className="mt-4 flex items-center gap-2 text-zinc-500 dark:text-zinc-400">
         <Loader2 className="size-5 animate-spin" /> Загрузка…
