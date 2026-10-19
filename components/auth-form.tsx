@@ -4,6 +4,42 @@ import { useState } from "react";
 import { Loader2 } from "lucide-react";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const NETWORK_ERROR_MESSAGE =
+  "Не удалось соединиться с сервером. Проверьте интернет-соединение и попробуйте ещё раз.";
+
+type JsonBody = Record<string, unknown> | null;
+
+// POST с ретраями на сетевой сбой: «Load failed» в Safari — это fetch, не дождавшийся
+// ответа (нестабильная сеть, сворачивание браузера). Для request-code повтор безопасен:
+// антиспам-маркер вернёт alreadySent, и форма перейдёт к вводу кода.
+async function postJson(
+  url: string,
+  payload: Record<string, string>,
+): Promise<{ res: Response; body: JsonBody }> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const body: JsonBody = await res.json().catch(() => null);
+      return { res, body };
+    } catch (e) {
+      lastError = e;
+      if (attempt < 2) await new Promise((resolve) => setTimeout(resolve, 800));
+    }
+  }
+  throw lastError;
+}
+
+// TypeError из fetch — сетевой сбой: переводим на русский, иначе юзер видит
+// сырое браузерное сообщение (в Safari — «Load failed»)
+function errorMessage(e: unknown): string {
+  if (e instanceof TypeError) return NETWORK_ERROR_MESSAGE;
+  return e instanceof Error ? e.message : "Ошибка сети.";
+}
 
 // Форма входа по одноразовому коду из письма (шаг 1: email → код на почту,
 // шаг 2: ввод кода). Используется на странице /account и в модалке входа (шапка).
@@ -23,26 +59,23 @@ export default function AuthForm({ onSuccess }: { onSuccess: () => void | Promis
     setError("");
     setCodeExpired(false);
     try {
-      const res = await fetch("/api/auth/request-code", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.trim() }),
-      });
-      const body = await res.json();
+      const { res, body } = await postJson("/api/auth/request-code", { email: email.trim() });
       if (!res.ok) {
         // Код отправлен менее минуты назад и действует 5 минут — он уже в почте,
         // поэтому это не ошибка: переходим на шаг ввода кода
-        if (body.alreadySent) {
+        if (body?.alreadySent) {
           setCode("");
           setCodeSent(true);
           return;
         }
-        throw new Error(body.message || "Не удалось отправить код.");
+        throw new Error(
+          typeof body?.message === "string" ? body.message : "Не удалось отправить код.",
+        );
       }
       setCode("");
       setCodeSent(true);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Ошибка сети.");
+      setError(errorMessage(e));
     } finally {
       setLoading(false);
     }
@@ -54,25 +87,23 @@ export default function AuthForm({ onSuccess }: { onSuccess: () => void | Promis
     setError("");
     setCodeExpired(false);
     try {
-      const res = await fetch("/api/auth/verify-code", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.trim(), code: code.trim() }),
+      const { res, body } = await postJson("/api/auth/verify-code", {
+        email: email.trim(),
+        code: code.trim(),
       });
-      const body = await res.json();
       if (!res.ok) {
-        if (body.expired) {
+        if (body?.expired) {
           setCodeExpired(true);
           setError("Код недействителен или просрочен.");
         } else {
-          throw new Error(body.message || "Не удалось войти.");
+          throw new Error(typeof body?.message === "string" ? body.message : "Не удалось войти.");
         }
         return;
       }
       setCode("");
       await onSuccess();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Ошибка сети.");
+      setError(errorMessage(e));
     } finally {
       setLoading(false);
     }
